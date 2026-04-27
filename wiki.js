@@ -537,7 +537,8 @@ function performSearch(q) {
       page.title.toLowerCase().includes(lower) ||
       page.content.toLowerCase().includes(lower)
     );
-    el.style.display = match ? '' : 'none';
+    const target = el.closest('.nav-item-row') || el;
+    target.style.display = match ? '' : 'none';
   });
   nav.querySelectorAll('.nav-section-label').forEach(el => { el.style.display = 'none'; });
 }
@@ -585,6 +586,45 @@ function initSidebar() {
    GitHub API
    ────────────────────────────── */
 const GH_FILE = 'user-pages.json';
+const userPageIds = new Set();
+
+function makeUserNavItem(id, title) {
+  const wrap = document.createElement('div');
+  wrap.className = 'nav-item-row';
+  const a = document.createElement('a');
+  a.className = 'nav-item'; a.href = '#';
+  a.dataset.page = id; a.textContent = title;
+  const del = document.createElement('button');
+  del.className = 'nav-del-btn'; del.title = '삭제'; del.textContent = '✕'; del.dataset.id = id;
+  wrap.appendChild(a); wrap.appendChild(del);
+  return wrap;
+}
+
+async function handleDeletePage(pageId, delBtn) {
+  if (delBtn.dataset.confirm !== '1') {
+    delBtn.dataset.confirm = '1';
+    delBtn.textContent = '삭제?';
+    setTimeout(() => {
+      if (delBtn.dataset.confirm === '1') { delBtn.dataset.confirm = '0'; delBtn.textContent = '✕'; }
+    }, 2500);
+    return;
+  }
+  if (!ghConfig().token) { delBtn.dataset.confirm = '0'; delBtn.textContent = '✕'; alert('⚙️ 설정에서 GitHub 토큰을 입력해 주세요.'); return; }
+  delBtn.textContent = '…'; delBtn.disabled = true;
+  try {
+    const f = await ghGetFile(GH_FILE);
+    const current = JSON.parse(f.text);
+    delete current.pages[pageId];
+    current.nav.forEach(sec => { sec.items = sec.items.filter(i => i.id !== pageId); });
+    current.nav = current.nav.filter(sec => sec.items.length > 0);
+    const ok = await ghPutFile(GH_FILE, JSON.stringify(current, null, 2), f.sha, `페이지 삭제: ${PAGES[pageId]?.title || pageId}`);
+    if (ok) {
+      delete PAGES[pageId]; userPageIds.delete(pageId);
+      delBtn.closest('.nav-item-row').remove();
+      if (currentPage === pageId) navigate('intro');
+    } else { delBtn.textContent = '✕'; delBtn.disabled = false; delBtn.dataset.confirm = '0'; }
+  } catch(e) { delBtn.textContent = '✕'; delBtn.disabled = false; delBtn.dataset.confirm = '0'; }
+}
 
 function ghConfig() {
   return {
@@ -636,12 +676,8 @@ async function loadUserPages() {
       label.textContent = sec.section;
       nav.appendChild(label);
       sec.items.forEach(item => {
-        const a = document.createElement('a');
-        a.className = 'nav-item';
-        a.href = '#';
-        a.dataset.page = item.id;
-        a.textContent = item.title;
-        nav.appendChild(a);
+        userPageIds.add(item.id);
+        nav.appendChild(makeUserNavItem(item.id, item.title));
       });
     });
   } catch(e) {
@@ -845,10 +881,8 @@ function initIngestUI() {
         secEl.textContent = section;
         nav.appendChild(secEl);
       }
-      const a = document.createElement('a');
-      a.className = 'nav-item'; a.href = '#';
-      a.dataset.page = id; a.textContent = title;
-      nav.appendChild(a);
+      userPageIds.add(id);
+      nav.appendChild(makeUserNavItem(id, title));
       setTimeout(() => { ingestModal.classList.add('hidden'); navigate(id); }, 2500);
     } else {
       setIngestStatus('저장 실패. GitHub 토큰을 확인해 주세요.', 'err');
@@ -1000,10 +1034,8 @@ function initAdminUI() {
         secEl.textContent = section;
         nav.appendChild(secEl);
       }
-      const a = document.createElement('a');
-      a.className = 'nav-item'; a.href = '#';
-      a.dataset.page = id; a.textContent = title;
-      nav.appendChild(a);
+      userPageIds.add(id);
+      nav.appendChild(makeUserNavItem(id, title));
       setTimeout(() => addPageModal.classList.add('hidden'), 2500);
     } else {
       setStatus('저장 실패. 토큰과 저장소 설정을 확인해 주세요.', 'err');
@@ -1028,6 +1060,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initIngestUI();
 
   document.getElementById('nav').addEventListener('click', e => {
+    const delBtn = e.target.closest('.nav-del-btn');
+    if (delBtn) { e.stopPropagation(); handleDeletePage(delBtn.dataset.id, delBtn); return; }
     const item = e.target.closest('.nav-item');
     if (!item) return;
     e.preventDefault();

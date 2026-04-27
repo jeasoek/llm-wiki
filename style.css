@@ -138,6 +138,17 @@ body {
 .nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
 .nav-item.active { background: var(--primary); color: #fff; font-weight: 600; }
 
+.nav-item-row { display: flex; align-items: center; margin-bottom: 1px; }
+.nav-item-row .nav-item { flex: 1; margin-bottom: 0; }
+.nav-del-btn {
+  display: none; background: none; border: none;
+  color: rgba(255,255,255,.35); cursor: pointer;
+  padding: 3px 7px; font-size: 11px; border-radius: 4px;
+  flex-shrink: 0; transition: .15s; line-height: 1;
+}
+.nav-item-row:hover .nav-del-btn { display: flex; align-items: center; justify-content: center; }
+.nav-del-btn:hover { background: rgba(239,68,68,.25); color: #f87171; }
+
 /* ── 메인 ── */
 .main {
   margin-left: var(--sidebar-w);
