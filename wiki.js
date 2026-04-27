@@ -579,11 +579,232 @@ function initSidebar() {
 }
 
 /* ──────────────────────────────
+   GitHub API
+   ────────────────────────────── */
+const GH_FILE = 'user-pages.json';
+
+function ghConfig() {
+  return {
+    token: localStorage.getItem('gh_token') || '',
+    owner: localStorage.getItem('gh_owner') || 'jeasoek',
+    repo:  localStorage.getItem('gh_repo')  || 'llm-wiki',
+  };
+}
+
+async function ghGetFile(path) {
+  const c = ghConfig();
+  const r = await fetch(
+    `https://api.github.com/repos/${c.owner}/${c.repo}/contents/${path}`,
+    { headers: { Authorization: `token ${c.token}` } }
+  );
+  if (!r.ok) throw new Error(r.status);
+  const d = await r.json();
+  return { sha: d.sha, text: decodeURIComponent(escape(atob(d.content.replace(/\s/g, '')))) };
+}
+
+async function ghPutFile(path, text, sha, message) {
+  const c = ghConfig();
+  const body = { message, content: btoa(unescape(encodeURIComponent(text))) };
+  if (sha) body.sha = sha;
+  const r = await fetch(
+    `https://api.github.com/repos/${c.owner}/${c.repo}/contents/${path}`,
+    {
+      method: 'PUT',
+      headers: { Authorization: `token ${c.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  );
+  return r.ok;
+}
+
+async function loadUserPages() {
+  const c = ghConfig();
+  try {
+    const url = `https://raw.githubusercontent.com/${c.owner}/${c.repo}/main/${GH_FILE}?_=${Date.now()}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    Object.assign(PAGES, data.pages || {});
+    const nav = document.getElementById('nav');
+    (data.nav || []).forEach(sec => {
+      if (!sec.items || sec.items.length === 0) return;
+      const label = document.createElement('div');
+      label.className = 'nav-section-label';
+      label.textContent = sec.section;
+      nav.appendChild(label);
+      sec.items.forEach(item => {
+        const a = document.createElement('a');
+        a.className = 'nav-item';
+        a.href = '#';
+        a.dataset.page = item.id;
+        a.textContent = item.title;
+        nav.appendChild(a);
+      });
+    });
+  } catch(e) {
+    console.warn('user-pages 로드 실패:', e);
+  }
+}
+
+async function saveUserPage(pageData, navSection) {
+  let current = { nav: [], pages: {} };
+  let sha = null;
+  try {
+    const f = await ghGetFile(GH_FILE);
+    sha = f.sha;
+    current = JSON.parse(f.text);
+  } catch(e) { /* 파일 없음 — 새로 생성 */ }
+
+  current.pages[pageData.id] = {
+    title:      pageData.title,
+    breadcrumb: pageData.breadcrumb,
+    content:    pageData.content,
+  };
+
+  let sec = current.nav.find(s => s.section === navSection);
+  if (!sec) {
+    sec = { section: navSection, items: [] };
+    current.nav.push(sec);
+  }
+  if (!sec.items.find(i => i.id === pageData.id)) {
+    sec.items.push({ id: pageData.id, title: pageData.title });
+  }
+
+  return ghPutFile(GH_FILE, JSON.stringify(current, null, 2), sha, `페이지 추가: ${pageData.title}`);
+}
+
+function toSlug(str) {
+  return str.trim().toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w\-가-힣]/g, '')
+    .replace(/--+/g, '-') || `page-${Date.now()}`;
+}
+
+/* ──────────────────────────────
+   관리자 UI
+   ────────────────────────────── */
+function initAdminUI() {
+  /* 설정 모달 */
+  const settingsModal = document.getElementById('settingsModal');
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    document.getElementById('ghToken').value = localStorage.getItem('gh_token') || '';
+    document.getElementById('ghOwner').value = localStorage.getItem('gh_owner') || 'jeasoek';
+    document.getElementById('ghRepo').value  = localStorage.getItem('gh_repo')  || 'llm-wiki';
+    settingsModal.classList.remove('hidden');
+  });
+  document.getElementById('closeSettings').addEventListener('click', () => settingsModal.classList.add('hidden'));
+  settingsModal.addEventListener('click', e => { if (e.target === settingsModal) settingsModal.classList.add('hidden'); });
+  document.getElementById('saveSettings').addEventListener('click', () => {
+    localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim());
+    localStorage.setItem('gh_owner', document.getElementById('ghOwner').value.trim() || 'jeasoek');
+    localStorage.setItem('gh_repo',  document.getElementById('ghRepo').value.trim()  || 'llm-wiki');
+    settingsModal.classList.add('hidden');
+  });
+
+  /* 페이지 추가 모달 */
+  const addPageModal = document.getElementById('addPageModal');
+  const sectionSel   = document.getElementById('newPageSection');
+  const newSecRow    = document.getElementById('newSectionRow');
+
+  document.getElementById('addPageBtn').addEventListener('click', () => {
+    sectionSel.innerHTML = '';
+    document.querySelectorAll('.nav-section-label').forEach(el => {
+      const opt = document.createElement('option');
+      opt.value = opt.textContent = el.textContent;
+      sectionSel.appendChild(opt);
+    });
+    const newOpt = document.createElement('option');
+    newOpt.value = '__new__'; newOpt.textContent = '＋ 새 섹션 만들기';
+    sectionSel.appendChild(newOpt);
+    newSecRow.classList.add('hidden');
+    document.getElementById('newPageTitle').value = '';
+    document.getElementById('newPageContent').innerHTML = '';
+    document.getElementById('newSectionName').value = '';
+    setStatus('', '');
+    addPageModal.classList.remove('hidden');
+    document.getElementById('newPageTitle').focus();
+  });
+
+  sectionSel.addEventListener('change', () => {
+    newSecRow.classList.toggle('hidden', sectionSel.value !== '__new__');
+  });
+  document.getElementById('closeAddPage').addEventListener('click', () => addPageModal.classList.add('hidden'));
+  addPageModal.addEventListener('click', e => { if (e.target === addPageModal) addPageModal.classList.add('hidden'); });
+
+  /* 에디터 툴바 */
+  document.querySelectorAll('.page-editor-toolbar [data-cmd]').forEach(btn => {
+    btn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      document.getElementById('newPageContent').focus();
+      document.execCommand(btn.dataset.cmd, false, null);
+    });
+  });
+  document.querySelectorAll('.page-editor-toolbar [data-tag]').forEach(btn => {
+    btn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      document.getElementById('newPageContent').focus();
+      document.execCommand('formatBlock', false, btn.dataset.tag);
+    });
+  });
+
+  /* 저장 */
+  document.getElementById('saveNewPage').addEventListener('click', async () => {
+    const title   = document.getElementById('newPageTitle').value.trim();
+    const content = document.getElementById('newPageContent').innerHTML.trim();
+    let   section = sectionSel.value;
+    if (section === '__new__') section = document.getElementById('newSectionName').value.trim();
+
+    const saveBtn = document.getElementById('saveNewPage');
+
+    if (!title)   { setStatus('제목을 입력해 주세요.', 'err'); return; }
+    if (!content || content === '<br>') { setStatus('내용을 입력해 주세요.', 'err'); return; }
+    if (!section) { setStatus('섹션을 선택하거나 입력해 주세요.', 'err'); return; }
+    if (!ghConfig().token) { setStatus('⚙️ 설정에서 GitHub 토큰을 먼저 입력해 주세요.', 'err'); return; }
+
+    setStatus('저장 중...', '');
+    saveBtn.disabled = true;
+
+    const id         = toSlug(title);
+    const breadcrumb = `${section} / ${title}`;
+    const ok         = await saveUserPage({ id, title, breadcrumb, content }, section);
+    saveBtn.disabled = false;
+
+    if (ok) {
+      setStatus('✓ 저장됨! Vercel이 배포 중입니다. (약 30초 후 반영)', 'ok');
+      PAGES[id] = { title, breadcrumb, content };
+      const nav = document.getElementById('nav');
+      let secEl = Array.from(nav.querySelectorAll('.nav-section-label')).find(el => el.textContent === section);
+      if (!secEl) {
+        secEl = document.createElement('div');
+        secEl.className = 'nav-section-label';
+        secEl.textContent = section;
+        nav.appendChild(secEl);
+      }
+      const a = document.createElement('a');
+      a.className = 'nav-item'; a.href = '#';
+      a.dataset.page = id; a.textContent = title;
+      nav.appendChild(a);
+      setTimeout(() => addPageModal.classList.add('hidden'), 2500);
+    } else {
+      setStatus('저장 실패. 토큰과 저장소 설정을 확인해 주세요.', 'err');
+    }
+  });
+
+  function setStatus(msg, type) {
+    const el = document.getElementById('addPageStatus');
+    el.textContent = msg;
+    el.className = `add-page-status ${type}`;
+  }
+}
+
+/* ──────────────────────────────
    초기화
    ────────────────────────────── */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadUserPages();
   navigate('intro');
   initSidebar();
+  initAdminUI();
 
   document.getElementById('nav').addEventListener('click', e => {
     const item = e.target.closest('.nav-item');

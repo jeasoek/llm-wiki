@@ -35,6 +35,9 @@
       <a class="nav-item" href="#" data-page="workflow">실전 워크플로우</a>
       <a class="nav-item" href="#" data-page="tips">운영 팁</a>
     </nav>
+    <div class="sidebar-footer">
+      <button id="addPageBtn" class="add-page-nav-btn">＋ 페이지 추가</button>
+    </div>
   </aside>
 
   <!-- 사이드바 접혔을 때 펼치기 버튼 -->
@@ -47,6 +50,7 @@
       <div class="breadcrumb" id="breadcrumb">시작하기 / 소개</div>
       <div class="topbar-right">
         <span class="edit-hint">Andrej Karpathy의 LLM Wiki 패턴 기반</span>
+        <button id="settingsBtn" class="settings-btn" title="GitHub 설정">⚙️</button>
       </div>
     </div>
 
@@ -58,6 +62,71 @@
       <div>Based on <a href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f" target="_blank">Andrej Karpathy's LLM Wiki Gist</a></div>
     </footer>
   </main>
+</div>
+
+<!-- ── 설정 모달 ── -->
+<div id="settingsModal" class="admin-overlay hidden">
+  <div class="admin-box">
+    <div class="admin-hdr">
+      <span>⚙️ GitHub 설정</span>
+      <button id="closeSettings" class="admin-close-btn">✕</button>
+    </div>
+    <div class="admin-body">
+      <label class="admin-label">GitHub Personal Access Token
+        <input type="password" id="ghToken" class="admin-input" placeholder="ghp_...">
+      </label>
+      <label class="admin-label">저장소 소유자 (Owner)
+        <input type="text" id="ghOwner" class="admin-input" placeholder="jeasoek">
+      </label>
+      <label class="admin-label">저장소 이름 (Repo)
+        <input type="text" id="ghRepo" class="admin-input" placeholder="llm-wiki">
+      </label>
+    </div>
+    <div class="admin-footer">
+      <button id="saveSettings" class="admin-btn-primary">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 페이지 추가 모달 ── -->
+<div id="addPageModal" class="admin-overlay hidden">
+  <div class="admin-box wide">
+    <div class="admin-hdr">
+      <span>📄 새 페이지 추가</span>
+      <button id="closeAddPage" class="admin-close-btn">✕</button>
+    </div>
+    <div class="admin-body">
+      <label class="admin-label">페이지 제목
+        <input type="text" id="newPageTitle" class="admin-input" placeholder="제목을 입력하세요...">
+      </label>
+      <label class="admin-label">섹션
+        <select id="newPageSection" class="admin-input"></select>
+      </label>
+      <div id="newSectionRow" class="hidden">
+        <label class="admin-label">새 섹션 이름
+          <input type="text" id="newSectionName" class="admin-input" placeholder="새 섹션 이름...">
+        </label>
+      </div>
+      <div class="admin-label">내용
+        <div class="page-editor-toolbar" style="margin-top:6px">
+          <button data-cmd="bold"><b>B</b></button>
+          <button data-cmd="italic"><i>I</i></button>
+          <button data-cmd="underline"><u>U</u></button>
+          <span class="editor-sep"></span>
+          <button data-tag="h2">H2</button>
+          <button data-tag="h3">H3</button>
+          <span class="editor-sep"></span>
+          <button data-cmd="insertUnorderedList">• 목록</button>
+          <button data-cmd="insertOrderedList">① 목록</button>
+        </div>
+        <div id="newPageContent" class="page-editor" contenteditable="true" placeholder="내용을 입력하세요..."></div>
+      </div>
+    </div>
+    <div class="admin-footer">
+      <span id="addPageStatus" class="add-page-status"></span>
+      <button id="saveNewPage" class="admin-btn-primary">GitHub에 저장 →</button>
+    </div>
+  </div>
 </div>
 
 <script src="wiki.js"></script>
