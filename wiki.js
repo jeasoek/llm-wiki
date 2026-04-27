@@ -773,6 +773,216 @@ ${documentText}`;
 }
 
 /* ──────────────────────────────
+   Gemini 공통 헬퍼
+   ────────────────────────────── */
+async function callGeminiRaw(prompt, maxTokens) {
+  const key = localStorage.getItem('gemini_key') || '';
+  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다. ⚙️ 설정에서 입력해 주세요.');
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: maxTokens || 4096 },
+      }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API 오류 (${res.status})`);
+  }
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('응답을 파싱할 수 없습니다.');
+  return JSON.parse(m[0]);
+}
+
+function buildWikiContext() {
+  return Object.entries(PAGES).map(([id, page]) => {
+    const text = (page.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000);
+    return `### ${page.title}\n${text}`;
+  }).join('\n\n---\n\n');
+}
+
+async function callGeminiQuery(question) {
+  const ctx = buildWikiContext();
+  return callGeminiRaw(
+    `당신은 LLM Wiki 전문가입니다. 아래 위키 내용을 참고해서 질문에 상세히 답해주세요.
+
+위키 내용:
+${ctx}
+
+질문: ${question}
+
+반드시 다음 JSON만 응답하세요 (코드 블록 없이):
+{
+  "answer": "HTML 형식 답변 (<h2>,<h3>,<p>,<ul><li>,<strong>,callout div 사용)",
+  "save_title": "이 답변을 저장할 페이지 제목",
+  "save_section": "저장할 섹션명"
+}`, 4096
+  );
+}
+
+async function callGeminiLint() {
+  const ctx = buildWikiContext();
+  return callGeminiRaw(
+    `당신은 LLM Wiki 품질 관리자입니다. 아래 위키 전체를 검토해 품질 이슈를 찾아주세요.
+
+위키 내용:
+${ctx}
+
+검사 항목:
+1. 모순: 서로 다른 페이지에서 상충되는 내용
+2. 공백: 언급되었지만 페이지가 없는 중요 개념
+3. 보완필요: 내용이 부족하거나 더 상세히 다뤄야 할 페이지
+4. 오래됨: 업데이트가 필요할 수 있는 정보
+
+반드시 다음 JSON만 응답하세요 (코드 블록 없이):
+{
+  "issues": [
+    {
+      "type": "모순|공백|보완필요|오래됨",
+      "severity": "high|medium|low",
+      "title": "이슈 제목",
+      "pages": ["관련 페이지 제목들"],
+      "description": "이슈 상세 설명",
+      "suggestion": "개선 방향"
+    }
+  ],
+  "summary": "전체 위키 품질 요약 (2-3문장)"
+}`, 4096
+  );
+}
+
+/* ──────────────────────────────
+   Query UI
+   ────────────────────────────── */
+function initQueryUI() {
+  const queryModal     = document.getElementById('queryModal');
+  const queryInput     = document.getElementById('queryInput');
+  const queryAnswerArea = document.getElementById('queryAnswerArea');
+  const queryAnswer    = document.getElementById('queryAnswer');
+  const queryStatus    = document.getElementById('queryStatus');
+  const queryAskBtn    = document.getElementById('queryAskBtn');
+  const querySaveBtn   = document.getElementById('querySaveBtn');
+  let lastResult = null;
+
+  function setStatus(msg, type) { queryStatus.textContent = msg; queryStatus.className = `add-page-status ${type}`; }
+
+  document.getElementById('queryBtn').addEventListener('click', () => {
+    queryInput.value = ''; queryAnswer.innerHTML = '';
+    queryAnswerArea.classList.add('hidden'); querySaveBtn.classList.add('hidden');
+    setStatus('', ''); queryModal.classList.remove('hidden'); queryInput.focus();
+  });
+  document.getElementById('closeQuery').addEventListener('click', () => queryModal.classList.add('hidden'));
+  queryModal.addEventListener('click', e => { if (e.target === queryModal) queryModal.classList.add('hidden'); });
+
+  queryInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); queryAskBtn.click(); }
+  });
+
+  queryAskBtn.addEventListener('click', async () => {
+    const q = queryInput.value.trim();
+    if (!q) { setStatus('질문을 입력해 주세요.', 'err'); return; }
+    if (!localStorage.getItem('gemini_key')) { setStatus('⚙️ 설정에서 Gemini API 키를 입력해 주세요.', 'err'); return; }
+    setStatus('Gemini가 위키를 검색 중...', ''); queryAskBtn.disabled = true;
+    queryAnswerArea.classList.add('hidden'); querySaveBtn.classList.add('hidden');
+    try {
+      lastResult = await callGeminiQuery(q);
+      queryAnswer.innerHTML = lastResult.answer;
+      queryAnswerArea.classList.remove('hidden'); querySaveBtn.classList.remove('hidden');
+      setStatus('', '');
+    } catch(e) { setStatus(`오류: ${e.message}`, 'err'); }
+    finally { queryAskBtn.disabled = false; }
+  });
+
+  querySaveBtn.addEventListener('click', async () => {
+    if (!lastResult) return;
+    if (!ghConfig().token) { setStatus('⚙️ 설정에서 GitHub 토큰을 입력해 주세요.', 'err'); return; }
+    const title = lastResult.save_title || '새 Q&A';
+    const section = lastResult.save_section || 'Q&A';
+    const id = toSlug(title);
+    setStatus('GitHub에 저장 중...', ''); querySaveBtn.disabled = true;
+    const ok = await saveUserPage({ id, title, breadcrumb: `${section} / ${title}`, content: lastResult.answer }, section);
+    querySaveBtn.disabled = false;
+    if (ok) {
+      setStatus('✓ 저장됨! Vercel 배포 중...', 'ok');
+      PAGES[id] = { title, breadcrumb: `${section} / ${title}`, content: lastResult.answer };
+      userPageIds.add(id);
+      const nav = document.getElementById('nav');
+      let secEl = Array.from(nav.querySelectorAll('.nav-section-label')).find(el => el.textContent === section);
+      if (!secEl) { secEl = document.createElement('div'); secEl.className = 'nav-section-label'; secEl.textContent = section; nav.appendChild(secEl); }
+      nav.appendChild(makeUserNavItem(id, title));
+      setTimeout(() => { queryModal.classList.add('hidden'); navigate(id); }, 2000);
+    } else { setStatus('저장 실패.', 'err'); }
+  });
+}
+
+/* ──────────────────────────────
+   Lint UI
+   ────────────────────────────── */
+function initLintUI() {
+  const lintModal    = document.getElementById('lintModal');
+  const lintStatus   = document.getElementById('lintStatus');
+  const lintResults  = document.getElementById('lintResults');
+  const lintStartBtn = document.getElementById('lintStartBtn');
+
+  function setStatus(msg, type) { lintStatus.textContent = msg; lintStatus.className = `add-page-status ${type}`; }
+
+  document.getElementById('lintBtn').addEventListener('click', () => {
+    lintResults.innerHTML = ''; setStatus('', '');
+    lintStartBtn.disabled = false; lintStartBtn.textContent = '🔧 검사 시작';
+    lintModal.classList.remove('hidden');
+  });
+  document.getElementById('closeLint').addEventListener('click', () => lintModal.classList.add('hidden'));
+  lintModal.addEventListener('click', e => { if (e.target === lintModal) lintModal.classList.add('hidden'); });
+
+  lintStartBtn.addEventListener('click', async () => {
+    if (!localStorage.getItem('gemini_key')) { setStatus('⚙️ 설정에서 Gemini API 키를 입력해 주세요.', 'err'); return; }
+    setStatus('Gemini가 위키 전체를 검토 중... (30초~1분 소요)', '');
+    lintStartBtn.disabled = true; lintStartBtn.textContent = '검사 중...'; lintResults.innerHTML = '';
+    try {
+      const result = await callGeminiLint();
+      renderLintResults(result);
+      setStatus('', '');
+    } catch(e) {
+      setStatus(`오류: ${e.message}`, 'err');
+      lintStartBtn.disabled = false; lintStartBtn.textContent = '🔧 다시 검사';
+    }
+  });
+
+  function renderLintResults(result) {
+    const sevLabel = { high: '높음', medium: '중간', low: '낮음' };
+    const typeIcon = { '모순': '⚠️', '공백': '🔲', '보완필요': '📝', '오래됨': '🕐' };
+    const issues = result.issues || [];
+    let html = '';
+    if (result.summary) html += `<div class="lint-summary">${result.summary}</div>`;
+    if (issues.length === 0) {
+      html += `<div class="lint-empty">✅ 이슈가 없습니다. 위키 품질이 양호합니다!</div>`;
+    } else {
+      html += `<div class="lint-count">${issues.length}개 이슈 발견</div>`;
+      issues.forEach(issue => {
+        html += `<div class="lint-issue lint-${issue.severity}">
+          <div class="lint-issue-hdr">
+            <span class="lint-type">${typeIcon[issue.type] || '•'} ${issue.type}</span>
+            <span class="lint-sev lint-sev-${issue.severity}">${sevLabel[issue.severity] || issue.severity}</span>
+          </div>
+          <div class="lint-issue-title">${issue.title || ''}</div>
+          ${issue.pages?.length ? `<div class="lint-pages">관련 페이지: ${issue.pages.join(', ')}</div>` : ''}
+          <div class="lint-desc">${issue.description}</div>
+          ${issue.suggestion ? `<div class="lint-suggestion">💡 ${issue.suggestion}</div>` : ''}
+        </div>`;
+      });
+    }
+    lintResults.innerHTML = html;
+    lintStartBtn.textContent = '🔧 다시 검사'; lintStartBtn.disabled = false;
+  }
+}
+
+/* ──────────────────────────────
    Ingest UI
    ────────────────────────────── */
 function initIngestUI() {
@@ -1058,6 +1268,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSidebar();
   initAdminUI();
   initIngestUI();
+  initQueryUI();
+  initLintUI();
 
   document.getElementById('nav').addEventListener('click', e => {
     const delBtn = e.target.closest('.nav-del-btn');

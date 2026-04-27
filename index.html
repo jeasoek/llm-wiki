@@ -37,6 +37,8 @@
     </nav>
     <div class="sidebar-footer">
       <button id="ingestBtn" class="ingest-nav-btn">⚡ Ingest</button>
+      <button id="queryBtn" class="query-nav-btn">🔍 Query</button>
+      <button id="lintBtn" class="lint-nav-btn">🔧 Lint</button>
       <button id="addPageBtn" class="add-page-nav-btn">＋ 페이지 추가</button>
     </div>
   </aside>
@@ -63,6 +65,48 @@
       <div>Based on <a href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f" target="_blank">Andrej Karpathy's LLM Wiki Gist</a></div>
     </footer>
   </main>
+</div>
+
+<!-- ── Query 모달 ── -->
+<div id="queryModal" class="admin-overlay hidden">
+  <div class="admin-box wide">
+    <div class="admin-hdr">
+      <span>🔍 Query — 위키 기반 질문 답변</span>
+      <button id="closeQuery" class="admin-close-btn">✕</button>
+    </div>
+    <div class="admin-body">
+      <label class="admin-label">질문 <small style="font-weight:400">(Ctrl+Enter로 요청)</small>
+        <textarea id="queryInput" class="ingest-textarea" style="min-height:80px;max-height:140px" placeholder="위키 내용에 대해 궁금한 것을 물어보세요..."></textarea>
+      </label>
+      <div id="queryAnswerArea" class="hidden">
+        <div class="admin-label" style="margin-bottom:6px">답변</div>
+        <div id="queryAnswer" class="ingest-preview content"></div>
+      </div>
+    </div>
+    <div class="admin-footer">
+      <span id="queryStatus" class="add-page-status"></span>
+      <button id="querySaveBtn" class="ingest-back-btn hidden">위키로 저장</button>
+      <button id="queryAskBtn" class="admin-btn-primary">🔍 답변 요청</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Lint 모달 ── -->
+<div id="lintModal" class="admin-overlay hidden">
+  <div class="admin-box wide">
+    <div class="admin-hdr">
+      <span>🔧 Lint — 위키 품질 검사</span>
+      <button id="closeLint" class="admin-close-btn">✕</button>
+    </div>
+    <div class="admin-body">
+      <p class="lint-intro">Gemini가 위키 전체 페이지를 검토해 모순·공백·보완이 필요한 부분을 찾아냅니다.</p>
+      <div id="lintResults"></div>
+    </div>
+    <div class="admin-footer">
+      <span id="lintStatus" class="add-page-status"></span>
+      <button id="lintStartBtn" class="admin-btn-primary">🔧 검사 시작</button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Ingest 모달 ── -->
