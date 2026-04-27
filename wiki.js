@@ -853,7 +853,7 @@ async function callGeminiRaw(prompt, maxTokens) {
 
 function buildWikiContext() {
   return Object.entries(PAGES).map(([id, page]) => {
-    const text = (page.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000);
+    const text = (page.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
     return `### ${page.title}\n${text}`;
   }).join('\n\n---\n\n');
 }
