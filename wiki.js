@@ -965,23 +965,127 @@ function buildWikiContext() {
   }).join('\n\n---\n\n');
 }
 
-async function callGeminiQuery(question) {
-  const ctx = buildWikiContext();
-  return callGeminiRaw(
-    `당신은 LLM Wiki 전문가입니다. 아래 위키 내용을 참고해서 질문에 상세히 답해주세요.
+/* ──────────────────────────────
+   RAG: Gemini Embedding + 코사인 유사도
+   ────────────────────────────── */
+async function callGeminiEmbed(text) {
+  const key = localStorage.getItem('gemini_key') || '';
+  if (!key) throw new Error('Gemini API 키가 필요합니다.');
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${key}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'models/text-embedding-004',
+        content: { parts: [{ text: text.slice(0, 10000) }] }
+      })
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Embedding 오류 (${res.status})`);
+  }
+  const data = await res.json();
+  return data.embedding.values;
+}
 
-위키 내용:
-${ctx}
+function cosineSimilarity(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
 
-질문: ${question}
+async function buildEmbeddingIndex(onProgress) {
+  const index = {};
+  const entries = Object.entries(PAGES);
+  for (let i = 0; i < entries.length; i++) {
+    const [id, page] = entries[i];
+    const text = `${page.title}\n${(page.content||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000)}`;
+    if (text.trim().length < 10) continue;
+    try { index[id] = await callGeminiEmbed(text); }
+    catch(e) { console.warn(`embed skip ${id}:`, e.message); }
+    if (onProgress) onProgress(i + 1, entries.length);
+  }
+  localStorage.setItem('wikiEmbedIndex', JSON.stringify(index));
+  localStorage.setItem('wikiEmbedTs', Date.now().toString());
+  return index;
+}
+
+async function findRelevantPages(question, topK = 4) {
+  let index = JSON.parse(localStorage.getItem('wikiEmbedIndex') || 'null');
+  if (!index) index = await buildEmbeddingIndex();
+  const qVec = await callGeminiEmbed(question);
+  return Object.entries(index)
+    .map(([id, vec]) => ({ id, score: cosineSimilarity(qVec, vec) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .filter(x => x.score > 0.35)
+    .map(({ id }) => ({ id, page: PAGES[id] }))
+    .filter(({ page }) => !!page);
+}
+
+/* ──────────────────────────────
+   AI Chat: Multi-turn + RAG
+   ────────────────────────────── */
+const chatHistory = [];
+
+async function callGeminiChat(question, relevantPages) {
+  const key = localStorage.getItem('gemini_key') || '';
+  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다.');
+
+  const context = relevantPages.length > 0
+    ? relevantPages.map(({ page }) =>
+        `### ${page.title}\n${(page.content||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,5000)}`
+      ).join('\n\n---\n\n')
+    : '(관련 위키 페이지 없음 — 일반 지식으로 답변)';
+
+  const historyText = chatHistory.slice(-8)
+    .map(m => `${m.role === 'user' ? '사용자' : 'AI'}: ${m.text}`)
+    .join('\n');
+
+  const prompt = `당신은 LLM Wiki AI 어시스턴트입니다.
+아래 위키 페이지를 우선 참고하고, 위키에 없는 내용은 Gemini 일반 지식으로 보완하세요.
+HTML로 답변하세요 (<p>,<ul><li>,<strong>,<h3> 사용).
+
+【관련 위키 페이지】
+${context}
+
+【대화 히스토리】
+${historyText || '(첫 질문)'}
+
+【현재 질문】
+${question}
 
 반드시 다음 JSON만 응답하세요 (코드 블록 없이):
 {
-  "answer": "HTML 형식 답변 (<h2>,<h3>,<p>,<ul><li>,<strong>,callout div 사용)",
-  "save_title": "이 답변을 저장할 페이지 제목",
+  "answer": "HTML 형식 상세 답변",
+  "sources": ["참조한 위키 페이지 제목들 (없으면 빈 배열)"],
+  "followup": ["후속 질문 1", "후속 질문 2"],
+  "save_title": "이 답변을 위키에 저장할 제목",
   "save_section": "저장할 섹션명"
-}`, 4096
+}`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${key}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
+      })
+    }
   );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API 오류 (${res.status})`);
+  }
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('응답 파싱 실패');
+  return JSON.parse(m[0]);
 }
 
 async function callGeminiLint() {
@@ -1016,67 +1120,199 @@ ${ctx}
 }
 
 /* ──────────────────────────────
-   Query UI
+   AI 채팅 패널 UI
    ────────────────────────────── */
-function initQueryUI() {
-  const queryModal     = document.getElementById('queryModal');
-  const queryInput     = document.getElementById('queryInput');
-  const queryAnswerArea = document.getElementById('queryAnswerArea');
-  const queryAnswer    = document.getElementById('queryAnswer');
-  const queryStatus    = document.getElementById('queryStatus');
-  const queryAskBtn    = document.getElementById('queryAskBtn');
-  const querySaveBtn   = document.getElementById('querySaveBtn');
-  let lastResult = null;
+function initChatPanel() {
+  const panel       = document.getElementById('chatPanel');
+  const overlay     = document.getElementById('chatOverlay');
+  const messages    = document.getElementById('chatMessages');
+  const input       = document.getElementById('chatInput');
+  const sendBtn     = document.getElementById('chatSendBtn');
+  const statusBar   = document.getElementById('chatStatusBar');
+  const suggestions = document.getElementById('chatSuggestions');
 
-  function setStatus(msg, type) { queryStatus.textContent = msg; queryStatus.className = `add-page-status ${type}`; }
+  function setStatus(msg) { statusBar.textContent = msg; }
 
-  document.getElementById('queryBtn').addEventListener('click', () => {
-    queryInput.value = ''; queryAnswer.innerHTML = '';
-    queryAnswerArea.classList.add('hidden'); querySaveBtn.classList.add('hidden');
-    setStatus('', ''); queryModal.classList.remove('hidden'); queryInput.focus();
-  });
-  document.getElementById('closeQuery').addEventListener('click', () => queryModal.classList.add('hidden'));
-  queryModal.addEventListener('click', e => { if (e.target === queryModal) queryModal.classList.add('hidden'); });
+  function updateIndexStatus() {
+    const el = document.getElementById('indexStatus');
+    if (!el) return;
+    const ts = localStorage.getItem('wikiEmbedTs');
+    el.textContent = ts
+      ? `✓ 인덱스 생성됨 (${new Date(+ts).toLocaleString('ko')})`
+      : '⚠ 인덱스 없음 — 첫 질문 시 자동 생성됩니다.';
+  }
 
-  queryInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); queryAskBtn.click(); }
-  });
+  function openPanel() {
+    panel.classList.remove('hidden');
+    overlay.classList.remove('hidden');
+    updateIndexStatus();
+    input.focus();
+  }
 
-  queryAskBtn.addEventListener('click', async () => {
-    const q = queryInput.value.trim();
-    if (!q) { setStatus('질문을 입력해 주세요.', 'err'); return; }
-    if (!localStorage.getItem('gemini_key')) { setStatus('⚙️ 설정에서 Gemini API 키를 입력해 주세요.', 'err'); return; }
-    setStatus('Gemini가 위키를 검색 중...', ''); queryAskBtn.disabled = true;
-    queryAnswerArea.classList.add('hidden'); querySaveBtn.classList.add('hidden');
+  function closePanel() {
+    panel.classList.add('hidden');
+    overlay.classList.add('hidden');
+  }
+
+  document.getElementById('queryBtn').addEventListener('click', openPanel);
+  document.getElementById('closeChatPanel').addEventListener('click', closePanel);
+  overlay.addEventListener('click', closePanel);
+
+  /* 재인덱싱 */
+  document.getElementById('reindexBtn').addEventListener('click', async () => {
+    if (!localStorage.getItem('gemini_key')) { setStatus('⚙ Gemini API 키를 먼저 설정하세요.'); return; }
+    const total = Object.keys(PAGES).length;
+    setStatus(`인덱싱 시작... (총 ${total}개 페이지)`);
     try {
-      lastResult = await callGeminiQuery(q);
-      queryAnswer.innerHTML = lastResult.answer;
-      queryAnswerArea.classList.remove('hidden'); querySaveBtn.classList.remove('hidden');
-      setStatus('', '');
-    } catch(e) { setStatus(`오류: ${e.message}`, 'err'); }
-    finally { queryAskBtn.disabled = false; }
+      await buildEmbeddingIndex((done, tot) => setStatus(`인덱싱 중... ${done}/${tot}`));
+      setStatus('✓ 인덱싱 완료!');
+      updateIndexStatus();
+      setTimeout(() => setStatus(''), 3000);
+    } catch(e) { setStatus(`오류: ${e.message}`); }
   });
 
-  querySaveBtn.addEventListener('click', async () => {
-    if (!lastResult) return;
-    if (!ghConfig().token) { setStatus('⚙️ 설정에서 GitHub 토큰을 입력해 주세요.', 'err'); return; }
-    const title = lastResult.save_title || '새 Q&A';
-    const section = lastResult.save_section || 'Q&A';
-    const id = toSlug(title);
-    setStatus('GitHub에 저장 중...', ''); querySaveBtn.disabled = true;
-    const ok = await saveUserPage({ id, title, breadcrumb: `${section} / ${title}`, content: lastResult.answer }, section);
-    querySaveBtn.disabled = false;
-    if (ok) {
-      setStatus('✓ 저장됨! Vercel 배포 중...', 'ok');
-      PAGES[id] = { title, breadcrumb: `${section} / ${title}`, content: lastResult.answer };
-      userPageIds.add(id);
-      const nav = document.getElementById('nav');
-      let secEl = Array.from(nav.querySelectorAll('.nav-section-label')).find(el => el.textContent === section);
-      if (!secEl) { secEl = document.createElement('div'); secEl.className = 'nav-section-label'; secEl.textContent = section; nav.appendChild(secEl); }
-      nav.appendChild(makeUserNavItem(id, title));
-      setTimeout(() => { queryModal.classList.add('hidden'); navigate(id); }, 2000);
-    } else { setStatus('저장 실패.', 'err'); }
+  /* 대화 초기화 */
+  document.getElementById('clearChatBtn').addEventListener('click', () => {
+    chatHistory.length = 0;
+    messages.innerHTML = `
+      <div class="chat-welcome">
+        <div class="chat-welcome-icon">🧠</div>
+        <p>위키 내용을 <strong>RAG</strong>로 검색해 답변합니다.<br>무엇이든 질문하세요!</p>
+        <div id="indexStatus" class="chat-index-status"></div>
+      </div>`;
+    suggestions.classList.add('hidden');
+    setStatus('');
+    updateIndexStatus();
   });
+
+  /* 메시지 전송 */
+  async function sendMessage() {
+    const q = input.value.trim();
+    if (!q) return;
+    if (!localStorage.getItem('gemini_key')) {
+      setStatus('⚙ 설정에서 Gemini API 키를 입력해 주세요.'); return;
+    }
+
+    appendUserBubble(q);
+    input.value = '';
+    suggestions.classList.add('hidden');
+    const typingEl = appendTyping();
+    sendBtn.disabled = true;
+
+    try {
+      setStatus('관련 페이지 RAG 검색 중...');
+      let relevant = [];
+      try {
+        relevant = await findRelevantPages(q);
+      } catch(e) {
+        if (!localStorage.getItem('wikiEmbedIndex')) {
+          setStatus('첫 실행: 위키 인덱싱 중...');
+          await buildEmbeddingIndex((d, t) => setStatus(`인덱싱 ${d}/${t}...`));
+          relevant = await findRelevantPages(q);
+        }
+      }
+
+      setStatus(`Gemini 답변 생성 중... (참조 ${relevant.length}개 페이지)`);
+      const result = await callGeminiChat(q, relevant);
+
+      chatHistory.push({ role: 'user', text: q });
+      chatHistory.push({ role: 'ai', text: result.answer.replace(/<[^>]+>/g, ' ') });
+
+      typingEl.remove();
+      appendAIBubble(result, relevant);
+      if (result.followup?.length) showSuggestions(result.followup);
+      updateIndexStatus();
+      setStatus('');
+    } catch(e) {
+      typingEl.remove();
+      appendUserBubble(`<span style="color:#dc2626">오류: ${e.message}</span>`, 'ai');
+      setStatus('');
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  function appendUserBubble(text) {
+    const el = document.createElement('div');
+    el.className = 'chat-msg user';
+    el.innerHTML = `<div class="chat-bubble">${text}</div>`;
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function appendAIBubble(result, relevant) {
+    const el = document.createElement('div');
+    el.className = 'chat-msg ai';
+
+    const sourceTags = relevant.map(({ id, page }) =>
+      `<span class="chat-source-tag" data-page="${id}">📄 ${page.title}</span>`
+    ).join('');
+
+    el.innerHTML = `
+      <div class="chat-bubble">${result.answer}</div>
+      ${sourceTags ? `<div class="chat-sources">${sourceTags}</div>` : ''}
+      <div class="chat-msg-actions">
+        <button class="chat-save-btn" data-title="${result.save_title||''}" data-section="${result.save_section||'Q&A'}">📌 위키에 저장</button>
+      </div>`;
+
+    el.querySelectorAll('.chat-source-tag').forEach(tag =>
+      tag.addEventListener('click', () => { navigate(tag.dataset.page); closePanel(); })
+    );
+
+    el.querySelector('.chat-save-btn').addEventListener('click', async function() {
+      if (!ghConfig().token) { setStatus('⚙ GitHub 토큰을 설정하세요.'); return; }
+      const title   = this.dataset.title || '새 Q&A';
+      const section = this.dataset.section || 'Q&A';
+      const content = el.querySelector('.chat-bubble').innerHTML;
+      const id = toSlug(title);
+      this.textContent = '저장 중...'; this.disabled = true;
+      setStatus('GitHub에 저장 중...');
+      const ok = await saveUserPage({ id, title, breadcrumb: `${section} / ${title}`, content }, section);
+      if (ok) {
+        PAGES[id] = { title, breadcrumb: `${section} / ${title}`, content };
+        userPageIds.add(id);
+        const nav = document.getElementById('nav');
+        let secEl = Array.from(nav.querySelectorAll('.nav-section-label')).find(el => el.textContent === section);
+        if (!secEl) { secEl = document.createElement('div'); secEl.className = 'nav-section-label'; secEl.textContent = section; nav.appendChild(secEl); }
+        nav.appendChild(makeUserNavItem(id, title));
+        this.textContent = '✓ 저장됨';
+        setStatus('✓ 저장됨! Vercel 배포 중...');
+        setTimeout(() => setStatus(''), 3000);
+      } else {
+        this.textContent = '저장 실패'; this.disabled = false;
+        setStatus('저장 실패. 토큰·저장소를 확인하세요.');
+      }
+    });
+
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function appendTyping() {
+    const el = document.createElement('div');
+    el.className = 'chat-msg ai';
+    el.innerHTML = `<div class="chat-bubble chat-typing"><span></span><span></span><span></span></div>`;
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+    return el;
+  }
+
+  function showSuggestions(qs) {
+    suggestions.innerHTML = '';
+    qs.forEach(q => {
+      const chip = document.createElement('button');
+      chip.className = 'chat-suggestion-chip';
+      chip.textContent = q;
+      chip.addEventListener('click', () => { input.value = q; sendMessage(); });
+      suggestions.appendChild(chip);
+    });
+    suggestions.classList.remove('hidden');
+  }
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendMessage(); }
+  });
+  sendBtn.addEventListener('click', sendMessage);
 }
 
 /* ──────────────────────────────
@@ -1426,7 +1662,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSidebar();
   initAdminUI();
   initIngestUI();
-  initQueryUI();
+  initChatPanel();
   initLintUI();
 
   document.getElementById('nav').addEventListener('click', e => {

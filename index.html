@@ -67,29 +67,31 @@
   </main>
 </div>
 
-<!-- ── Query 모달 ── -->
-<div id="queryModal" class="admin-overlay hidden">
-  <div class="admin-box wide">
-    <div class="admin-hdr">
-      <span>🔍 Query — 위키 기반 질문 답변</span>
-      <button id="closeQuery" class="admin-close-btn">✕</button>
-    </div>
-    <div class="admin-body">
-      <label class="admin-label">질문 <small style="font-weight:400">(Ctrl+Enter로 요청)</small>
-        <textarea id="queryInput" class="ingest-textarea" style="min-height:80px;max-height:140px" placeholder="위키 내용에 대해 궁금한 것을 물어보세요..."></textarea>
-      </label>
-      <div id="queryAnswerArea" class="hidden">
-        <div class="admin-label" style="margin-bottom:6px">답변</div>
-        <div id="queryAnswer" class="ingest-preview content"></div>
-      </div>
-    </div>
-    <div class="admin-footer">
-      <span id="queryStatus" class="add-page-status"></span>
-      <button id="querySaveBtn" class="ingest-back-btn hidden">위키로 저장</button>
-      <button id="queryAskBtn" class="admin-btn-primary">🔍 답변 요청</button>
+<!-- ── AI 채팅 패널 ── -->
+<div id="chatPanel" class="chat-panel hidden">
+  <div class="chat-panel-hdr">
+    <div class="chat-panel-title">🤖 Wiki AI Chat</div>
+    <div class="chat-panel-actions">
+      <button id="reindexBtn" class="chat-icon-btn" title="위키 재인덱싱 (새 페이지 추가 후)">🔄</button>
+      <button id="clearChatBtn" class="chat-icon-btn" title="대화 초기화">🗑</button>
+      <button id="closeChatPanel" class="chat-icon-btn">✕</button>
     </div>
   </div>
+  <div id="chatMessages" class="chat-messages">
+    <div class="chat-welcome">
+      <div class="chat-welcome-icon">🧠</div>
+      <p>위키 내용을 <strong>RAG</strong>로 검색해 답변합니다.<br>무엇이든 질문하세요!</p>
+      <div id="indexStatus" class="chat-index-status"></div>
+    </div>
+  </div>
+  <div id="chatSuggestions" class="chat-suggestions hidden"></div>
+  <div class="chat-input-wrap">
+    <textarea id="chatInput" class="chat-input" placeholder="질문 입력... (Ctrl+Enter)" rows="2"></textarea>
+    <button id="chatSendBtn" class="chat-send-btn" title="전송">↑</button>
+  </div>
+  <div id="chatStatusBar" class="chat-status-bar"></div>
 </div>
+<div id="chatOverlay" class="chat-overlay hidden"></div>
 
 <!-- ── Lint 모달 ── -->
 <div id="lintModal" class="admin-overlay hidden">
