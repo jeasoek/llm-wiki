@@ -523,13 +523,17 @@ function navigate(pageId) {
    ────────────────────────────── */
 function performSearch(q) {
   const nav = document.getElementById('nav');
+
   if (!q.trim()) {
-    nav.querySelectorAll('.nav-item').forEach(el => { el.style.display = ''; });
+    nav.querySelectorAll('.nav-item').forEach(el => { (el.closest('.nav-item-row') || el).style.display = ''; });
     nav.querySelectorAll('.nav-section-label').forEach(el => { el.style.display = ''; });
+    navigate(currentPage || 'intro');
     return;
   }
 
   const lower = q.toLowerCase();
+  const matches = [];
+
   nav.querySelectorAll('.nav-item').forEach(el => {
     const pageId = el.dataset.page;
     const page = PAGES[pageId];
@@ -537,10 +541,57 @@ function performSearch(q) {
       page.title.toLowerCase().includes(lower) ||
       page.content.toLowerCase().includes(lower)
     );
-    const target = el.closest('.nav-item-row') || el;
-    target.style.display = match ? '' : 'none';
+    (el.closest('.nav-item-row') || el).style.display = match ? '' : 'none';
+    if (match) matches.push({ id: pageId, page });
   });
   nav.querySelectorAll('.nav-section-label').forEach(el => { el.style.display = 'none'; });
+
+  renderSearchResults(q, matches);
+}
+
+function renderSearchResults(q, matches) {
+  const contentEl  = document.getElementById('content');
+  const breadcrumb = document.getElementById('breadcrumb');
+  breadcrumb.textContent = `검색 / "${q}"`;
+  document.title = `"${q}" 검색 — LLM Wiki`;
+
+  const escQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const hlRe = new RegExp(`(${escQ})`, 'gi');
+
+  function highlight(str) { return str.replace(hlRe, '<mark>$1</mark>'); }
+
+  function excerpt(content, q) {
+    const text = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const idx   = text.toLowerCase().indexOf(q.toLowerCase());
+    if (idx === -1) return highlight(text.slice(0, 220)) + (text.length > 220 ? '…' : '');
+    const s = Math.max(0, idx - 80);
+    const e = Math.min(text.length, idx + q.length + 160);
+    return (s > 0 ? '…' : '') + highlight(text.slice(s, e)) + (e < text.length ? '…' : '');
+  }
+
+  if (matches.length === 0) {
+    contentEl.innerHTML = `<h1>검색 결과</h1><p class="lead">"<strong>${q}</strong>"에 대한 결과가 없습니다.</p>`;
+    return;
+  }
+
+  let html = `<h1>검색 결과</h1><p class="lead">"<strong>${q}</strong>" — ${matches.length}개 페이지에서 발견</p>`;
+  matches.forEach(({ id, page }) => {
+    html += `
+      <div class="search-result-card" data-page="${id}">
+        <div class="src-title">${highlight(page.title)}</div>
+        <div class="src-breadcrumb">${page.breadcrumb}</div>
+        <div class="src-excerpt">${excerpt(page.content, q)}</div>
+      </div>`;
+  });
+  contentEl.innerHTML = html;
+
+  contentEl.querySelectorAll('.search-result-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.getElementById('searchInput').value = '';
+      performSearch('');
+      navigate(card.dataset.page);
+    });
+  });
 }
 
 /* ──────────────────────────────

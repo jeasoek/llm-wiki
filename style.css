@@ -415,6 +415,23 @@ body {
 }
 .footer a { color: var(--primary); text-decoration: none; }
 
+/* ── 검색 결과 ── */
+.search-result-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.search-result-card:hover { border-color: var(--primary); background: var(--primary-lt); }
+.src-title {
+  font-size: 16px; font-weight: 700; color: var(--primary); margin-bottom: 4px;
+}
+.src-breadcrumb { font-size: 12px; color: var(--text2); margin-bottom: 10px; }
+.src-excerpt { font-size: 14px; color: var(--text); line-height: 1.7; }
+.src-excerpt mark { background: #fef08a; color: var(--text); border-radius: 2px; padding: 0 2px; }
+
 /* ── 관리자 UI ── */
 .settings-btn {
   background: none; border: none; cursor: pointer;
