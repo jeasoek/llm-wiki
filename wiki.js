@@ -504,7 +504,10 @@ function navigate(pageId) {
 
   currentPage = pageId;
 
-  document.getElementById('content').innerHTML = page.content;
+  const rawContent = page.content || '';
+  const looksLikeMarkdown = /^#{1,3} |^\*\*|^---/m.test(rawContent) && !/<[a-z]/i.test(rawContent);
+  document.getElementById('content').innerHTML =
+    (looksLikeMarkdown && typeof marked !== 'undefined') ? marked.parse(rawContent) : rawContent;
   document.getElementById('breadcrumb').textContent = page.breadcrumb;
   document.title = `${page.title} — LLM Wiki`;
 
@@ -772,12 +775,18 @@ function initAdminUI() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      const escaped = ev.target.result
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      document.getElementById('newPageContent').focus();
-      document.execCommand('insertHTML', false,
-        `<pre style="background:#f1f5f9;border-radius:8px;padding:12px 14px;font-size:13px;overflow-x:auto;white-space:pre-wrap"><code>${escaped}</code></pre>`
-      );
+      const text = ev.target.result;
+      const editor = document.getElementById('newPageContent');
+      editor.focus();
+      const isMarkdown = file.name.endsWith('.md') || file.name.endsWith('.markdown');
+      if (isMarkdown && typeof marked !== 'undefined') {
+        document.execCommand('insertHTML', false, marked.parse(text));
+      } else {
+        const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        document.execCommand('insertHTML', false,
+          `<pre style="background:#f1f5f9;border-radius:8px;padding:12px 14px;font-size:13px;overflow-x:auto;white-space:pre-wrap"><code>${escaped}</code></pre>`
+        );
+      }
     };
     reader.readAsText(file, 'UTF-8');
     attachFileInput.value = '';
