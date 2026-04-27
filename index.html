@@ -36,6 +36,7 @@
       <a class="nav-item" href="#" data-page="tips">운영 팁</a>
     </nav>
     <div class="sidebar-footer">
+      <button id="ingestBtn" class="ingest-nav-btn">⚡ Ingest</button>
       <button id="addPageBtn" class="add-page-nav-btn">＋ 페이지 추가</button>
     </div>
   </aside>
@@ -64,6 +65,51 @@
   </main>
 </div>
 
+<!-- ── Ingest 모달 ── -->
+<div id="ingestModal" class="admin-overlay hidden">
+  <div class="admin-box wide">
+    <div class="admin-hdr">
+      <span>⚡ Ingest — 문서 자동 분석</span>
+      <button id="closeIngest" class="admin-close-btn">✕</button>
+    </div>
+    <div class="admin-body">
+
+      <!-- 입력 영역 -->
+      <div id="ingestInputArea">
+        <div class="admin-label">문서 내용 붙여넣기
+          <textarea id="ingestText" class="ingest-textarea" placeholder="여기에 문서 내용을 붙여넣으세요...&#10;(논문 요약, 기술 문서, 블로그 글 등 무엇이든 가능합니다)"></textarea>
+        </div>
+        <div class="ingest-file-row">
+          <button id="ingestFileBtn" class="ingest-file-pick-btn">📎 파일 선택 (.txt .md)</button>
+          <span id="ingestFileName" class="ingest-file-name"></span>
+          <input type="file" id="ingestFileInput" accept=".txt,.md,.markdown" style="display:none">
+        </div>
+      </div>
+
+      <!-- 미리보기 영역 (분석 후 표시) -->
+      <div id="ingestPreviewArea" class="hidden">
+        <div class="ingest-preview-meta">
+          <label class="admin-label" style="margin-bottom:8px">제목
+            <input type="text" id="ingestTitle" class="admin-input">
+          </label>
+          <label class="admin-label" style="margin-bottom:8px">섹션
+            <input type="text" id="ingestSection" class="admin-input">
+          </label>
+        </div>
+        <div class="admin-label" style="margin-bottom:6px">미리보기</div>
+        <div id="ingestPreview" class="ingest-preview content"></div>
+      </div>
+
+    </div>
+    <div class="admin-footer">
+      <span id="ingestStatus" class="add-page-status"></span>
+      <button id="ingestBackBtn" class="ingest-back-btn hidden">← 다시 입력</button>
+      <button id="ingestAnalyzeBtn" class="admin-btn-primary">⚡ Gemini로 분석</button>
+      <button id="ingestSaveBtn" class="admin-btn-primary hidden">GitHub에 저장 →</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── 설정 모달 ── -->
 <div id="settingsModal" class="admin-overlay hidden">
   <div class="admin-box">
@@ -72,6 +118,9 @@
       <button id="closeSettings" class="admin-close-btn">✕</button>
     </div>
     <div class="admin-body">
+      <label class="admin-label">Gemini API Key
+        <input type="password" id="geminiKey" class="admin-input" placeholder="AIza...">
+      </label>
       <label class="admin-label">GitHub Personal Access Token
         <input type="password" id="ghToken" class="admin-input" placeholder="ghp_...">
       </label>

@@ -416,6 +416,16 @@ body {
   padding: 10px 8px 16px; flex-shrink: 0;
   border-top: 1px solid rgba(255,255,255,.08);
 }
+.ingest-nav-btn {
+  width: 100%; background: rgba(16,185,129,.2);
+  border: 1px solid rgba(16,185,129,.4);
+  color: rgba(255,255,255,.85); padding: 8px 12px;
+  border-radius: 7px; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: .15s; font-family: inherit;
+  text-align: left; margin-bottom: 6px;
+}
+.ingest-nav-btn:hover { background: rgba(16,185,129,.38); color: #fff; }
+
 .add-page-nav-btn {
   width: 100%; background: rgba(79,70,229,.2);
   border: 1px solid rgba(79,70,229,.4);
@@ -495,6 +505,34 @@ body {
 [contenteditable][placeholder]:empty::before {
   content: attr(placeholder); color: var(--text2); pointer-events: none;
 }
+.ingest-textarea {
+  display: block; width: 100%; min-height: 200px; max-height: 300px;
+  margin-top: 6px; padding: 12px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 13.5px; font-family: inherit;
+  line-height: 1.6; resize: vertical; outline: none; color: var(--text);
+}
+.ingest-textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-lt); }
+.ingest-file-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.ingest-file-pick-btn {
+  background: var(--bg2); border: 1px solid var(--border);
+  padding: 7px 14px; border-radius: 7px; font-size: 13px;
+  cursor: pointer; font-family: inherit; transition: .15s;
+}
+.ingest-file-pick-btn:hover { background: var(--border); }
+.ingest-file-name { font-size: 13px; color: var(--text2); }
+.ingest-preview-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.ingest-preview {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 20px 24px; max-height: 320px; overflow-y: auto;
+  background: var(--bg);
+}
+.ingest-back-btn {
+  background: none; border: 1px solid var(--border);
+  padding: 8px 14px; border-radius: 8px; font-size: 13px;
+  cursor: pointer; font-family: inherit; color: var(--text2); transition: .15s;
+}
+.ingest-back-btn:hover { background: var(--bg2); }
+
 .add-page-status { font-size: 13px; color: var(--text2); flex: 1; }
 .add-page-status.ok  { color: #16a34a; }
 .add-page-status.err { color: #dc2626; }

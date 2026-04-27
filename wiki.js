@@ -684,23 +684,198 @@ function toSlug(str) {
 }
 
 /* ──────────────────────────────
+   Gemini API
+   ────────────────────────────── */
+async function callGemini(documentText) {
+  const key = localStorage.getItem('gemini_key') || '';
+  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다. ⚙️ 설정에서 입력해 주세요.');
+
+  const prompt = `당신은 LLM Wiki 관리자입니다. 아래 문서를 분석해서 위키 페이지로 정리해주세요.
+
+반드시 다음 JSON 형식으로만 응답하세요 (코드 블록 없이 순수 JSON):
+{
+  "title": "페이지 제목 (한국어, 간결하게)",
+  "section": "카테고리 (예: 개념, 아키텍처, 튜토리얼, 심화, 레퍼런스 등)",
+  "content": "HTML 형식의 페이지 내용"
+}
+
+content HTML 작성 규칙:
+- <h2>대제목</h2>, <h3>소제목</h3>
+- <p>단락</p>
+- <ul><li>항목</li></ul> 또는 <ol><li>항목</li></ol>
+- <strong>강조</strong>
+- 핵심 개념은 <div class="callout callout-info"><div class="callout-icon">💡</div><div>내용</div></div> 사용
+- 비교/정리표는 <table class="wiki-table"><thead><tr><th>...</th></tr></thead><tbody>...</tbody></table> 사용
+- 코드는 <div class="code-block"><pre><code>...</code></pre></div> 사용
+- 내용은 충실하고 상세하게 작성
+
+문서 내용:
+${documentText}`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API 오류 (${res.status})`);
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Gemini 응답을 파싱할 수 없습니다.');
+  return JSON.parse(jsonMatch[0]);
+}
+
+/* ──────────────────────────────
+   Ingest UI
+   ────────────────────────────── */
+function initIngestUI() {
+  const ingestModal      = document.getElementById('ingestModal');
+  const ingestInputArea  = document.getElementById('ingestInputArea');
+  const ingestPreviewArea = document.getElementById('ingestPreviewArea');
+  const ingestAnalyzeBtn = document.getElementById('ingestAnalyzeBtn');
+  const ingestSaveBtn    = document.getElementById('ingestSaveBtn');
+  const ingestBackBtn    = document.getElementById('ingestBackBtn');
+  const ingestStatus     = document.getElementById('ingestStatus');
+
+  function setIngestStatus(msg, type) {
+    ingestStatus.textContent = msg;
+    ingestStatus.className = `add-page-status ${type}`;
+  }
+
+  function showInputState() {
+    ingestInputArea.classList.remove('hidden');
+    ingestPreviewArea.classList.add('hidden');
+    ingestAnalyzeBtn.classList.remove('hidden');
+    ingestSaveBtn.classList.add('hidden');
+    ingestBackBtn.classList.add('hidden');
+    setIngestStatus('', '');
+  }
+
+  /* 열기/닫기 */
+  document.getElementById('ingestBtn').addEventListener('click', () => {
+    showInputState();
+    document.getElementById('ingestText').value = '';
+    document.getElementById('ingestFileName').textContent = '';
+    ingestModal.classList.remove('hidden');
+    document.getElementById('ingestText').focus();
+  });
+  document.getElementById('closeIngest').addEventListener('click', () => ingestModal.classList.add('hidden'));
+  ingestModal.addEventListener('click', e => { if (e.target === ingestModal) ingestModal.classList.add('hidden'); });
+  ingestBackBtn.addEventListener('click', showInputState);
+
+  /* 파일 선택 */
+  const fileInput = document.getElementById('ingestFileInput');
+  document.getElementById('ingestFileBtn').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    document.getElementById('ingestFileName').textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = ev => { document.getElementById('ingestText').value = ev.target.result; };
+    reader.readAsText(file, 'UTF-8');
+    fileInput.value = '';
+  });
+
+  /* Gemini 분석 */
+  ingestAnalyzeBtn.addEventListener('click', async () => {
+    const text = document.getElementById('ingestText').value.trim();
+    if (!text) { setIngestStatus('문서 내용을 입력해 주세요.', 'err'); return; }
+    if (!localStorage.getItem('gemini_key')) {
+      setIngestStatus('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.', 'err'); return;
+    }
+
+    setIngestStatus('Gemini가 분석 중입니다...', '');
+    ingestAnalyzeBtn.disabled = true;
+
+    try {
+      const result = await callGemini(text);
+      document.getElementById('ingestTitle').value   = result.title   || '';
+      document.getElementById('ingestSection').value = result.section || '';
+      document.getElementById('ingestPreview').innerHTML = result.content || '';
+
+      ingestInputArea.classList.add('hidden');
+      ingestPreviewArea.classList.remove('hidden');
+      ingestAnalyzeBtn.classList.add('hidden');
+      ingestSaveBtn.classList.remove('hidden');
+      ingestBackBtn.classList.remove('hidden');
+      setIngestStatus('분석 완료! 내용을 확인 후 저장하세요.', 'ok');
+    } catch(e) {
+      setIngestStatus(`오류: ${e.message}`, 'err');
+    } finally {
+      ingestAnalyzeBtn.disabled = false;
+    }
+  });
+
+  /* GitHub 저장 */
+  ingestSaveBtn.addEventListener('click', async () => {
+    const title   = document.getElementById('ingestTitle').value.trim();
+    const section = document.getElementById('ingestSection').value.trim();
+    const content = document.getElementById('ingestPreview').innerHTML.trim();
+
+    if (!title || !section) { setIngestStatus('제목과 섹션을 입력해 주세요.', 'err'); return; }
+    if (!ghConfig().token)  { setIngestStatus('⚙️ 설정에서 GitHub 토큰을 입력해 주세요.', 'err'); return; }
+
+    setIngestStatus('GitHub에 저장 중...', '');
+    ingestSaveBtn.disabled = true;
+
+    const id         = toSlug(title);
+    const breadcrumb = `${section} / ${title}`;
+    const ok         = await saveUserPage({ id, title, breadcrumb, content }, section);
+    ingestSaveBtn.disabled = false;
+
+    if (ok) {
+      setIngestStatus('✓ 저장됨! Vercel 배포 중... (약 30초 후 반영)', 'ok');
+      PAGES[id] = { title, breadcrumb, content };
+      const nav = document.getElementById('nav');
+      let secEl = Array.from(nav.querySelectorAll('.nav-section-label')).find(el => el.textContent === section);
+      if (!secEl) {
+        secEl = document.createElement('div');
+        secEl.className = 'nav-section-label';
+        secEl.textContent = section;
+        nav.appendChild(secEl);
+      }
+      const a = document.createElement('a');
+      a.className = 'nav-item'; a.href = '#';
+      a.dataset.page = id; a.textContent = title;
+      nav.appendChild(a);
+      setTimeout(() => { ingestModal.classList.add('hidden'); navigate(id); }, 2500);
+    } else {
+      setIngestStatus('저장 실패. GitHub 토큰을 확인해 주세요.', 'err');
+    }
+  });
+}
+
+/* ──────────────────────────────
    관리자 UI
    ────────────────────────────── */
 function initAdminUI() {
   /* 설정 모달 */
   const settingsModal = document.getElementById('settingsModal');
   document.getElementById('settingsBtn').addEventListener('click', () => {
-    document.getElementById('ghToken').value = localStorage.getItem('gh_token') || '';
-    document.getElementById('ghOwner').value = localStorage.getItem('gh_owner') || 'jeasoek';
-    document.getElementById('ghRepo').value  = localStorage.getItem('gh_repo')  || 'llm-wiki';
+    document.getElementById('geminiKey').value = localStorage.getItem('gemini_key') || '';
+    document.getElementById('ghToken').value   = localStorage.getItem('gh_token')   || '';
+    document.getElementById('ghOwner').value   = localStorage.getItem('gh_owner')   || 'jeasoek';
+    document.getElementById('ghRepo').value    = localStorage.getItem('gh_repo')    || 'llm-wiki';
     settingsModal.classList.remove('hidden');
   });
   document.getElementById('closeSettings').addEventListener('click', () => settingsModal.classList.add('hidden'));
   settingsModal.addEventListener('click', e => { if (e.target === settingsModal) settingsModal.classList.add('hidden'); });
   document.getElementById('saveSettings').addEventListener('click', () => {
-    localStorage.setItem('gh_token', document.getElementById('ghToken').value.trim());
-    localStorage.setItem('gh_owner', document.getElementById('ghOwner').value.trim() || 'jeasoek');
-    localStorage.setItem('gh_repo',  document.getElementById('ghRepo').value.trim()  || 'llm-wiki');
+    localStorage.setItem('gemini_key', document.getElementById('geminiKey').value.trim());
+    localStorage.setItem('gh_token',   document.getElementById('ghToken').value.trim());
+    localStorage.setItem('gh_owner',   document.getElementById('ghOwner').value.trim() || 'jeasoek');
+    localStorage.setItem('gh_repo',    document.getElementById('ghRepo').value.trim()  || 'llm-wiki');
     settingsModal.classList.add('hidden');
   });
 
@@ -850,6 +1025,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   navigate('intro');
   initSidebar();
   initAdminUI();
+  initIngestUI();
 
   document.getElementById('nav').addEventListener('click', e => {
     const item = e.target.closest('.nav-item');
