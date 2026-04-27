@@ -614,6 +614,58 @@ body {
 .add-page-status.ok  { color: #16a34a; }
 .add-page-status.err { color: #dc2626; }
 
+/* ── 트리 테이블 ── */
+.tree-table-wrap { overflow-x: auto; margin: 12px 0 24px; border: 1px solid var(--border); border-radius: 10px; }
+.tree-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
+.tree-table thead th {
+  background: #1e293b; color: #f1f5f9; padding: 9px 12px;
+  text-align: left; white-space: nowrap; position: sticky; top: 0; z-index: 1;
+  font-weight: 600; font-size: 12px; letter-spacing: .03em;
+}
+.tree-table tbody td { padding: 5px 10px; border-bottom: 1px solid #f1f5f9; text-align: left; vertical-align: top; }
+.tree-table tbody tr:last-child td { border-bottom: none; }
+
+/* 깊이별 배경 */
+.tt-d0 { background: #334155; }
+.tt-d0 td { color: #f1f5f9 !important; }
+.tt-d1 { background: #475569; }
+.tt-d1 td { color: #f8fafc !important; }
+.tt-d2 { background: #f1f5f9; }
+.tt-d2 td { color: #1e293b; }
+.tt-d3 { background: #ffffff; }
+.tt-d4 { background: #fafafa; }
+.tt-d5 { background: #f8f9fa; }
+
+/* 레이블 */
+.tt-lbl-0   { font-weight: 700; font-size: 13px; }
+.tt-lbl-mid { font-weight: 600; font-size: 13px; }
+.tt-lbl-leaf{ font-size: 13px; color: #334155; }
+.tt-code { font-size: 11px; color: #6366f1; background: #eef2ff; padding: 1px 5px; border-radius: 3px; font-family: 'Consolas', monospace; margin-top: 2px; display: inline-block; }
+
+/* 데이터 셀 */
+.tt-item  { min-width: 220px; line-height: 1.5; }
+.tt-desc  { max-width: 280px; font-size: 12px; color: #475569; line-height: 1.5; }
+.tt-d0 .tt-desc, .tt-d1 .tt-desc { color: #cbd5e1; }
+.tt-mod   { white-space: nowrap; font-size: 12px; color: #0f766e; font-weight: 500; }
+.tt-d0 .tt-mod, .tt-d1 .tt-mod { color: #7dd3fc; }
+.tt-tgt   { text-align: center; min-width: 60px; }
+.tt-scope { font-size: 12px; white-space: nowrap; }
+.tt-tc    { font-family: 'Consolas', monospace; font-size: 12px; color: #0f766e; white-space: nowrap; font-weight: 600; }
+.tt-d0 .tt-tc, .tt-d1 .tt-tc { color: #86efac; }
+.tt-note  { font-size: 11px; color: #64748b; max-width: 180px; line-height: 1.4; }
+.tt-d0 .tt-note, .tt-d1 .tt-note { color: #94a3b8; }
+.tt-yes   { color: #16a34a; font-weight: 700; font-size: 14px; }
+.tt-no    { color: #dc2626; font-size: 12px; }
+
+/* 헤더 컬럼 너비 */
+.tt-h-item  { min-width: 220px; }
+.tt-h-desc  { min-width: 200px; max-width: 280px; }
+.tt-h-mod   { min-width: 70px; }
+.tt-h-tgt   { min-width: 60px; text-align: center; }
+.tt-h-scope { min-width: 80px; }
+.tt-h-tc    { min-width: 80px; }
+.tt-h-note  { min-width: 140px; }
+
 /* ── 모바일 ── */
 @media (max-width: 768px) {
   .sidebar {

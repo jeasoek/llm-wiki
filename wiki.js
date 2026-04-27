@@ -506,8 +506,12 @@ function navigate(pageId) {
 
   const rawContent = page.content || '';
   const looksLikeMarkdown = /^#{1,3} |^\*\*|^---/m.test(rawContent) && !/<[a-z]/i.test(rawContent);
-  document.getElementById('content').innerHTML =
+  const contentEl = document.getElementById('content');
+  contentEl.innerHTML =
     (looksLikeMarkdown && typeof marked !== 'undefined') ? marked.parse(rawContent) : rawContent;
+
+  transformTreeTable(contentEl);
+
   document.getElementById('breadcrumb').textContent = page.breadcrumb;
   document.title = `${page.title} — LLM Wiki`;
 
@@ -516,6 +520,109 @@ function navigate(pageId) {
   });
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ──────────────────────────────
+   Tree Table 변환
+   Col1~ColN 계층 구조 마크다운 테이블 → 시각적 트리 테이블
+   ────────────────────────────── */
+function transformTreeTable(container) {
+  container.querySelectorAll('table').forEach(table => {
+    const headerCells = [...table.querySelectorAll('thead th')];
+    const headers = headerCells.map(th => th.textContent.trim());
+
+    // Col1, Col2, Col3... 패턴 감지
+    if (headers[0] !== 'Col1' || headers[1] !== 'Col2' || !headers[2]) return;
+    let maxDepth = 0;
+    while (maxDepth < headers.length && headers[maxDepth] === `Col${maxDepth + 1}`) maxDepth++;
+    if (maxDepth < 3) return;
+
+    const idx = name => headers.indexOf(name);
+    const smEntFiIdx = idx('SM Ent FI Configuration List');
+    const imgObjIdx  = idx('IMG Object');
+    const descIdx    = idx('개요');
+    const moduleIdx  = idx('Module');
+    const smTgtIdx   = idx('SM대상 (218)');
+    const globalIdx  = idx('Global/Org');
+    const tcodeIdx   = idx('Transaction Code');
+    const noteIdx    = idx('비고');
+
+    const wrap = document.createElement('div');
+    wrap.className = 'tree-table-wrap';
+
+    const nt = document.createElement('table');
+    nt.className = 'tree-table';
+    nt.innerHTML = `<thead><tr>
+      <th class="tt-h-item">항목</th>
+      <th class="tt-h-desc">개요</th>
+      <th class="tt-h-mod">모듈</th>
+      <th class="tt-h-tgt">SM대상</th>
+      <th class="tt-h-scope">범위</th>
+      <th class="tt-h-tc">TCode</th>
+      <th class="tt-h-note">비고</th>
+    </tr></thead>`;
+
+    const tbody = document.createElement('tbody');
+
+    ;[...table.querySelectorAll('tbody tr')].forEach(row => {
+      const cells = [...row.querySelectorAll('td')];
+      if (!cells.length) return;
+
+      let depth = -1, label = '';
+      for (let i = 0; i < maxDepth; i++) {
+        const t = (cells[i]?.textContent || '').trim();
+        if (t) { depth = i; label = t; break; }
+      }
+      if (depth < 0) return;
+
+      const smCode  = smEntFiIdx >= 0 ? (cells[smEntFiIdx]?.textContent || '').trim() : '';
+      const imgCode = imgObjIdx  >= 0 ? (cells[imgObjIdx ]?.textContent || '').trim() : '';
+      const techCode = smCode || imgCode;
+      const g = i => i >= 0 ? (cells[i]?.textContent || '').trim() : '';
+
+      const tr = document.createElement('tr');
+      const depthClass = Math.min(depth, 5);
+      tr.className = `tt-row tt-d${depthClass}`;
+
+      // 항목 셀 (들여쓰기 + 기술 코드)
+      const tdItem = document.createElement('td');
+      tdItem.className = 'tt-item';
+      tdItem.style.paddingLeft = `${8 + depth * 16}px`;
+
+      let icon = '';
+      if (depth === 0) icon = '▶ ';
+      else if (depth <= 2) icon = '┣ ';
+      else icon = '└ ';
+
+      const labelClass = depth === 0 ? 'tt-lbl-0' : depth <= 2 ? 'tt-lbl-mid' : 'tt-lbl-leaf';
+      let html = `<span class="${labelClass}">${icon}${label}</span>`;
+      if (techCode) html += `<br><code class="tt-code">${techCode}</code>`;
+      tdItem.innerHTML = html;
+      tr.appendChild(tdItem);
+
+      const addTd = (val, cls) => {
+        const td = document.createElement('td');
+        td.className = cls || '';
+        if (val === '●') td.innerHTML = '<span class="tt-yes">●</span>';
+        else if (val === 'X') td.innerHTML = '<span class="tt-no">✗</span>';
+        else td.textContent = val;
+        tr.appendChild(td);
+      };
+
+      addTd(g(descIdx),   'tt-desc');
+      addTd(g(moduleIdx), 'tt-mod');
+      addTd(g(smTgtIdx),  'tt-tgt');
+      addTd(g(globalIdx), 'tt-scope');
+      addTd(g(tcodeIdx),  'tt-tc');
+      addTd(g(noteIdx),   'tt-note');
+
+      tbody.appendChild(tr);
+    });
+
+    nt.appendChild(tbody);
+    wrap.appendChild(nt);
+    table.parentNode.replaceChild(wrap, table);
+  });
 }
 
 /* ──────────────────────────────
