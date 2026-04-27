@@ -118,8 +118,13 @@
           <span class="editor-sep"></span>
           <button data-cmd="insertUnorderedList">• 목록</button>
           <button data-cmd="insertOrderedList">① 목록</button>
+          <span class="editor-sep"></span>
+          <button id="attachImgBtn" title="이미지 첨부">🖼 이미지</button>
+          <button id="attachFileBtn" title="텍스트 파일 첨부">📎 파일</button>
         </div>
         <div id="newPageContent" class="page-editor" contenteditable="true" placeholder="내용을 입력하세요..."></div>
+        <input type="file" id="attachImgInput" accept="image/*" style="display:none">
+        <input type="file" id="attachFileInput" accept=".txt,.md,.csv" style="display:none">
       </div>
     </div>
     <div class="admin-footer">

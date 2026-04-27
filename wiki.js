@@ -747,6 +747,42 @@ function initAdminUI() {
     });
   });
 
+  /* 첨부 — 이미지 */
+  const attachImgInput = document.getElementById('attachImgInput');
+  document.getElementById('attachImgBtn').addEventListener('click', () => attachImgInput.click());
+  attachImgInput.addEventListener('change', () => {
+    const file = attachImgInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById('newPageContent').focus();
+      document.execCommand('insertHTML', false,
+        `<img src="${ev.target.result}" alt="${file.name}" style="max-width:100%;border-radius:8px;margin:8px 0">`
+      );
+    };
+    reader.readAsDataURL(file);
+    attachImgInput.value = '';
+  });
+
+  /* 첨부 — 텍스트 파일 */
+  const attachFileInput = document.getElementById('attachFileInput');
+  document.getElementById('attachFileBtn').addEventListener('click', () => attachFileInput.click());
+  attachFileInput.addEventListener('change', () => {
+    const file = attachFileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const escaped = ev.target.result
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      document.getElementById('newPageContent').focus();
+      document.execCommand('insertHTML', false,
+        `<pre style="background:#f1f5f9;border-radius:8px;padding:12px 14px;font-size:13px;overflow-x:auto;white-space:pre-wrap"><code>${escaped}</code></pre>`
+      );
+    };
+    reader.readAsText(file, 'UTF-8');
+    attachFileInput.value = '';
+  });
+
   /* 저장 */
   document.getElementById('saveNewPage').addEventListener('click', async () => {
     const title   = document.getElementById('newPageTitle').value.trim();
