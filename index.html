@@ -228,6 +228,33 @@
   </div>
 </div>
 
+<!-- ── 플로팅 챗봇 ── -->
+<div id="floatChat" class="float-chat hidden">
+  <div class="float-chat-hdr">
+    <div class="float-chat-title">
+      <span class="float-chat-dot"></span>
+      Wiki AI
+    </div>
+    <div style="display:flex;gap:4px">
+      <button id="floatChatClear" class="float-chat-hdr-btn" title="대화 초기화">🗑</button>
+      <button id="floatChatClose" class="float-chat-hdr-btn">✕</button>
+    </div>
+  </div>
+  <div id="floatChatMessages" class="float-chat-messages">
+    <div class="float-chat-welcome">
+      <div style="font-size:34px;margin-bottom:10px">🧠</div>
+      <p>안녕하세요!<br>위키 내용에 대해 무엇이든 물어보세요.</p>
+    </div>
+  </div>
+  <div id="floatChatSugg" class="float-chat-sugg hidden"></div>
+  <div class="float-chat-input-wrap">
+    <textarea id="floatChatInput" class="float-chat-input" placeholder="질문 입력... (Enter)" rows="1"></textarea>
+    <button id="floatChatSend" class="float-chat-send">↑</button>
+  </div>
+  <div id="floatChatStatus" class="float-chat-status"></div>
+</div>
+<button id="floatChatBtn" class="float-chat-btn" title="Wiki AI 챗봇">💬</button>
+
 <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
 <script src="wiki.js"></script>
 </body>

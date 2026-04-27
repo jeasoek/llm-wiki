@@ -1030,7 +1030,7 @@ async function findRelevantPages(question, topK = 4) {
    ────────────────────────────── */
 const chatHistory = [];
 
-async function callGeminiChat(question, relevantPages) {
+async function callGeminiChat(question, relevantPages, history = chatHistory) {
   const key = localStorage.getItem('gemini_key') || '';
   if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다.');
 
@@ -1040,7 +1040,7 @@ async function callGeminiChat(question, relevantPages) {
       ).join('\n\n---\n\n')
     : '(관련 위키 페이지 없음 — 일반 지식으로 답변)';
 
-  const historyText = chatHistory.slice(-8)
+  const historyText = history.slice(-8)
     .map(m => `${m.role === 'user' ? '사용자' : 'AI'}: ${m.text}`)
     .join('\n');
 
@@ -1654,6 +1654,135 @@ function initAdminUI() {
 }
 
 /* ──────────────────────────────
+   플로팅 챗봇
+   ────────────────────────────── */
+function initFloatChatbot() {
+  const btn      = document.getElementById('floatChatBtn');
+  const chat     = document.getElementById('floatChat');
+  const messages = document.getElementById('floatChatMessages');
+  const input    = document.getElementById('floatChatInput');
+  const sendBtn  = document.getElementById('floatChatSend');
+  const status   = document.getElementById('floatChatStatus');
+  const sugg     = document.getElementById('floatChatSugg');
+  const floatHistory = [];
+  let isOpen = false;
+
+  function openChat()  { isOpen = true;  chat.classList.remove('hidden'); btn.textContent = '✕'; input.focus(); }
+  function closeChat() { isOpen = false; chat.classList.add('hidden');    btn.textContent = '💬'; }
+  function toggleChat() { isOpen ? closeChat() : openChat(); }
+
+  btn.addEventListener('click', toggleChat);
+  document.getElementById('floatChatClose').addEventListener('click', closeChat);
+
+  document.getElementById('floatChatClear').addEventListener('click', () => {
+    floatHistory.length = 0;
+    messages.innerHTML = `<div class="float-chat-welcome">
+      <div style="font-size:34px;margin-bottom:10px">🧠</div>
+      <p>안녕하세요!<br>위키 내용에 대해 무엇이든 물어보세요.</p>
+    </div>`;
+    sugg.classList.add('hidden');
+    status.textContent = '';
+  });
+
+  async function sendMessage() {
+    const q = input.value.trim();
+    if (!q) return;
+    if (!localStorage.getItem('gemini_key')) {
+      status.textContent = '⚙ 설정에서 Gemini API 키를 입력해 주세요.'; return;
+    }
+
+    addUserBubble(q);
+    input.value = '';
+    input.style.height = 'auto';
+    sugg.classList.add('hidden');
+    const typing = addTyping();
+    sendBtn.disabled = true;
+
+    try {
+      status.textContent = 'RAG 검색 중...';
+      let relevant = [];
+      try {
+        relevant = await findRelevantPages(q);
+      } catch(e) {
+        if (!localStorage.getItem('wikiEmbedIndex')) {
+          status.textContent = '인덱싱 중 (첫 실행)...';
+          await buildEmbeddingIndex();
+          relevant = await findRelevantPages(q);
+        }
+      }
+      status.textContent = 'Gemini 답변 생성 중...';
+      const result = await callGeminiChat(q, relevant, floatHistory);
+      floatHistory.push({ role: 'user', text: q });
+      floatHistory.push({ role: 'ai',   text: result.answer.replace(/<[^>]+>/g, ' ') });
+      typing.remove();
+      addAIBubble(result, relevant);
+      if (result.followup?.length) showSugg(result.followup);
+      status.textContent = '';
+    } catch(e) {
+      typing.remove();
+      addUserBubble(`<span style="color:#dc2626">오류: ${e.message}</span>`, true);
+      status.textContent = '';
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  function addUserBubble(html, isAI = false) {
+    const el = document.createElement('div');
+    el.className = `fc-msg ${isAI ? 'ai' : 'user'}`;
+    el.innerHTML = `<div class="fc-bubble">${html}</div>`;
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function addAIBubble(result, relevant) {
+    const el = document.createElement('div');
+    el.className = 'fc-msg ai';
+    const srcTags = relevant.map(({ id, page }) =>
+      `<span class="fc-source" data-page="${id}">📄 ${page.title}</span>`
+    ).join('');
+    el.innerHTML = `
+      <div class="fc-bubble">${result.answer}</div>
+      ${srcTags ? `<div class="fc-sources">${srcTags}</div>` : ''}`;
+    el.querySelectorAll('.fc-source').forEach(tag =>
+      tag.addEventListener('click', () => { navigate(tag.dataset.page); closeChat(); })
+    );
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function addTyping() {
+    const el = document.createElement('div');
+    el.className = 'fc-msg ai';
+    el.innerHTML = `<div class="fc-bubble fc-typing"><span></span><span></span><span></span></div>`;
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+    return el;
+  }
+
+  function showSugg(qs) {
+    sugg.innerHTML = '';
+    qs.slice(0, 3).forEach(q => {
+      const chip = document.createElement('button');
+      chip.className = 'fc-chip';
+      chip.textContent = q;
+      chip.addEventListener('click', () => { input.value = q; sendMessage(); });
+      sugg.appendChild(chip);
+    });
+    sugg.classList.remove('hidden');
+  }
+
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 80) + 'px';
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  sendBtn.addEventListener('click', sendMessage);
+}
+
+/* ──────────────────────────────
    초기화
    ────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1664,6 +1793,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initIngestUI();
   initChatPanel();
   initLintUI();
+  initFloatChatbot();
 
   document.getElementById('nav').addEventListener('click', e => {
     const delBtn = e.target.closest('.nav-del-btn');
