@@ -749,7 +749,7 @@ content HTML 작성 규칙:
 ${documentText}`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -779,7 +779,7 @@ async function callGeminiRaw(prompt, maxTokens) {
   const key = localStorage.getItem('gemini_key') || '';
   if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다. ⚙️ 설정에서 입력해 주세요.');
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
