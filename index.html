@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Wiki</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ── 사이드바 ── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">🧠 LLM Wiki</div>
+      <button class="sidebar-toggle" id="sidebarToggle" title="사이드바 접기">‹</button>
+    </div>
+
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="🔍 검색..." autocomplete="off">
+    </div>
+
+    <nav class="nav" id="nav">
+      <div class="nav-section-label">시작하기</div>
+      <a class="nav-item active" href="#" data-page="intro">소개</a>
+      <a class="nav-item" href="#" data-page="concept">핵심 개념</a>
+
+      <div class="nav-section-label">아키텍처</div>
+      <a class="nav-item" href="#" data-page="architecture">3-레이어 구조</a>
+      <a class="nav-item" href="#" data-page="operations">주요 오퍼레이션</a>
+
+      <div class="nav-section-label">심화</div>
+      <a class="nav-item" href="#" data-page="vs-rag">LLM Wiki vs RAG</a>
+      <a class="nav-item" href="#" data-page="workflow">실전 워크플로우</a>
+      <a class="nav-item" href="#" data-page="tips">운영 팁</a>
+    </nav>
+  </aside>
+
+  <!-- 사이드바 접혔을 때 펼치기 버튼 -->
+  <button id="sidebarExpandBtn" class="sidebar-expand-btn" title="사이드바 펼치기">›</button>
+
+  <!-- ── 메인 콘텐츠 ── -->
+  <main class="main" id="main">
+    <div class="topbar">
+      <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+      <div class="breadcrumb" id="breadcrumb">시작하기 / 소개</div>
+      <div class="topbar-right">
+        <span class="edit-hint">Andrej Karpathy의 LLM Wiki 패턴 기반</span>
+      </div>
+    </div>
+
+    <article class="content" id="content">
+      <!-- 페이지 내용은 JS로 렌더링 -->
+    </article>
+
+    <footer class="footer">
+      <div>Based on <a href="https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f" target="_blank">Andrej Karpathy's LLM Wiki Gist</a></div>
+    </footer>
+  </main>
+</div>
+
+<script src="wiki.js"></script>
+</body>
+</html>
