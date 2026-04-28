@@ -1059,7 +1059,10 @@ async function extractSapParams(question) {
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const m = text.match(/\{[\s\S]*\}/);
     return m ? JSON.parse(m[0]) : {};
-  } catch { return {}; }
+  } catch(e) {
+    console.warn('[SAP] extractSapParams 실패:', e.message);
+    return {};
+  }
 }
 
 async function fetchSapData(params) {
@@ -1597,6 +1600,7 @@ function initAdminUI() {
     localStorage.setItem('sap_client',  document.getElementById('sapClient').value.trim() || '100');
     localStorage.setItem('sap_user',    document.getElementById('sapUser').value.trim());
     localStorage.setItem('sap_pass',    document.getElementById('sapPass').value.trim());
+    console.log('[Settings] 저장 완료 | sap_url:', localStorage.getItem('sap_url'), '| sap_user:', localStorage.getItem('sap_user'), '| sap_pass 길이:', localStorage.getItem('sap_pass')?.length);
     settingsModal.classList.add('hidden');
   });
 
