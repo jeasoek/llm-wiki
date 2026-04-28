@@ -19,13 +19,13 @@ export default async function handler(req, res) {
   }
 
   const PARAM_KEYS = ['GPID','BUPAK','BUKRS','GSBER','CUNIT','GJAHR','MONAT','TOCDE','TTEXT'];
-  // Function Import 방식: 파라미터를 직접 쿼리스트링으로 전달 (값은 single quote로 감쌈)
-  const queryParams = PARAM_KEYS
+  // EntitySet 방식: $filter로 파라미터 전달 (PID_SEARCHSET_GET_ENTITYSET은 ABAP 메서드명, URL은 PID_SEARCHSET)
+  const filters = PARAM_KEYS
     .filter(k => params[k])
-    .map(k => `${k}='${String(params[k]).replace(/'/g, "''")}'`);
+    .map(k => `${k} eq '${String(params[k]).replace(/'/g, "''")}'`);
 
-  queryParams.push(`$format=json`, `sap-client=${client}`);
-  const url = `${baseUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSET_GET_ENTITYSET?${queryParams.join('&')}`;
+  const filterStr = filters.length ? `&$filter=${encodeURIComponent(filters.join(' and '))}` : '';
+  const url = `${baseUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSET?$format=json&sap-client=${client}${filterStr}`;
 
   const credentials = Buffer.from(`${user}:${pass}`).toString('base64');
 

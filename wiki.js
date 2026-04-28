@@ -972,12 +972,12 @@ async function callGeminiEmbed(text) {
   const key = localStorage.getItem('gemini_key') || '';
   if (!key) throw new Error('Gemini API 키가 필요합니다.');
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-exp-03-07:embedContent?key=${key}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'models/text-embedding-004',
+        model: 'models/gemini-embedding-exp-03-07',
         content: { parts: [{ text: text.slice(0, 10000) }] }
       })
     }
