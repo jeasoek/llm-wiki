@@ -1120,20 +1120,30 @@ async function fetchSapData(params) {
   const filterStr = filters.length ? `&$filter=${encodeURIComponent(filters.join(' and '))}` : '';
   const odataUrl = `${sapUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSET?$format=json&sap-client=${sapClient}${filterStr}`;
 
-  console.log('[SAP] OData URL:', odataUrl);
-
-  // 브라우저에서 SAP 사내망 직접 호출 (Basic Auth)
-  const credentials = btoa(`${sapUser}:${sapPass}`);
-  const res = await fetch(odataUrl, {
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Accept': 'application/json',
-    },
-  });
-
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || `SAP 오류 (${res.status})`);
-  return data;
+  // 로컬 프록시(localhost:3001) 우선 시도 → 실패 시 직접 호출
+  const proxyUrl = 'http://localhost:3001';
+  try {
+    const proxyRes = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sapUrl, sapClient, sapUser, sapPass, params }),
+    });
+    const proxyData = await proxyRes.json();
+    if (!proxyRes.ok) throw new Error(proxyData.error || `프록시 오류 (${proxyRes.status})`);
+    console.log('[SAP] 로컬 프록시 경유 성공');
+    return proxyData;
+  } catch(proxyErr) {
+    // 프록시 미실행 시 직접 호출 (CORS 허용된 환경에서만 동작)
+    console.warn('[SAP] 프록시 실패, 직접 호출 시도:', proxyErr.message);
+    console.log('[SAP] OData URL:', odataUrl);
+    const credentials = btoa(`${sapUser}:${sapPass}`);
+    const res = await fetch(odataUrl, {
+      headers: { 'Authorization': `Basic ${credentials}`, 'Accept': 'application/json' },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || `SAP 오류 (${res.status})`);
+    return data;
+  }
 }
 
 async function callGeminiChat(question, relevantPages, history = chatHistory, sapData = null) {
