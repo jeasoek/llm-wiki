@@ -46,13 +46,15 @@ export default async function handler(req, res) {
     return;
   }
 
-  const PARAM_KEYS = ['GPID','BUPAK','BUKRS','GSBER','CUNIT','GJAHR','MONAT','TOCDE','TTEXT'];
-  const filters = PARAM_KEYS
-    .filter(k => params[k])
-    .map(k => `${k} eq '${String(params[k]).replace(/'/g, "''")}'`);
-
-  const filterStr = filters.length ? `&$filter=${encodeURIComponent(filters.join(' and '))}` : '';
-  const url = `${baseUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSET?$format=json&sap-client=${client}${filterStr}`;
+  const REQUIRED = { Gpid:'GPID', Bupak:'BUPAK', Bukrs:'BUKRS', Gjahr:'GJAHR', Monat:'MONAT', Ttext:'TTEXT' };
+  const OPTIONAL = { Gsber:'GSBER', Cunit:'CUNIT', Tocde:'TOCDE' };
+  const esc = v => String(v).replace(/'/g, "''");
+  const filters = [
+    ...Object.entries(REQUIRED).map(([odata, key]) => `${odata} eq '${esc(params[key] ?? '')}'`),
+    ...Object.entries(OPTIONAL).filter(([, key]) => params[key]).map(([odata, key]) => `${odata} eq '${esc(params[key])}'`),
+  ];
+  const filterStr = `&$filter=${encodeURIComponent(filters.join(' and '))}`;
+  const url = `${baseUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSet?$format=json&sap-client=${client}${filterStr}`;
 
   const credentials = Buffer.from(`${user}:${pass}`).toString('base64');
   const headers = {

@@ -1071,8 +1071,8 @@ async function extractSapParams(question) {
   const ttextM = question.match(/TTEXT\s*[:\s]\s*(.+?)(?:\s|$)/i);
   if (ttextM) params.TTEXT = ttextM[1];
 
-  // TTEXT 미지정 시 와일드카드 * 기본값
-  if (!params.TTEXT) params.TTEXT = '*';
+  // TTEXT 미지정 시 공백(SAP 전체조회 기본값)
+  if (!params.TTEXT) params.TTEXT = ' ';
 
   console.log('[SAP] extractSapParams (regex):', params);
 
@@ -1116,12 +1116,16 @@ async function fetchSapData(params) {
   console.log('[SAP] fetchSapData | url:', sapUrl, '| user:', sapUser, '| params:', params);
   if (!sapUrl || !sapUser || !sapPass) throw new Error('SAP 설정이 없습니다. ⚙️ 설정에서 SAP 정보를 입력해 주세요.');
 
-  const PARAM_KEYS = ['GPID','BUPAK','BUKRS','GSBER','CUNIT','GJAHR','MONAT','TOCDE','TTEXT'];
-  const filters = PARAM_KEYS
-    .filter(k => params[k])
-    .map(k => `${k} eq '${String(params[k]).replace(/'/g, "''")}'`);
-  const filterStr = filters.length ? `&$filter=${encodeURIComponent(filters.join(' and '))}` : '';
-  const odataUrl = `${sapUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSET?$format=json&sap-client=${sapClient}${filterStr}`;
+  // 필수 파라미터: 빈값도 포함 / 선택 파라미터: 값 있을 때만 포함
+  const REQUIRED = { Gpid:'GPID', Bupak:'BUPAK', Bukrs:'BUKRS', Gjahr:'GJAHR', Monat:'MONAT', Ttext:'TTEXT' };
+  const OPTIONAL = { Gsber:'GSBER', Cunit:'CUNIT', Tocde:'TOCDE' };
+  const esc = v => String(v).replace(/'/g, "''");
+  const filters = [
+    ...Object.entries(REQUIRED).map(([odata, key]) => `${odata} eq '${esc(params[key] ?? '')}'`),
+    ...Object.entries(OPTIONAL).filter(([, key]) => params[key]).map(([odata, key]) => `${odata} eq '${esc(params[key])}'`),
+  ];
+  const filterStr = `&$filter=${encodeURIComponent(filters.join(' and '))}`;
+  const odataUrl = `${sapUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSet?$format=json&sap-client=${sapClient}${filterStr}`;
 
   // 로컬 프록시(localhost:3001) 우선 시도 → 실패 시 직접 호출
   const proxyUrl = 'http://localhost:3001';

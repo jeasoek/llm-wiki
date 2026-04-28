@@ -65,12 +65,15 @@ const server = http.createServer((req, res) => {
         return;
       }
 
-      const KEYS = ['GPID','BUPAK','BUKRS','GSBER','CUNIT','GJAHR','MONAT','TOCDE','TTEXT'];
-      const filters = KEYS
-        .filter(k => params[k])
-        .map(k => `${k} eq '${String(params[k]).replace(/'/g,"''")}'`);
-      const filterStr = filters.length ? `&$filter=${encodeURIComponent(filters.join(' and '))}` : '';
-      const url = `${sapUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSET?$format=json&sap-client=${sapClient}${filterStr}`;
+      const REQUIRED = { Gpid:'GPID', Bupak:'BUPAK', Bukrs:'BUKRS', Gjahr:'GJAHR', Monat:'MONAT', Ttext:'TTEXT' };
+      const OPTIONAL = { Gsber:'GSBER', Cunit:'CUNIT', Tocde:'TOCDE' };
+      const esc = v => String(v).replace(/'/g,"''");
+      const filters = [
+        ...Object.entries(REQUIRED).map(([odata, key]) => `${odata} eq '${esc(params[key] ?? '')}'`),
+        ...Object.entries(OPTIONAL).filter(([,key]) => params[key]).map(([odata, key]) => `${odata} eq '${esc(params[key])}'`),
+      ];
+      const filterStr = `&$filter=${encodeURIComponent(filters.join(' and '))}`;
+      const url = `${sapUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSet?$format=json&sap-client=${sapClient}${filterStr}`;
 
       console.log('[Proxy] →', url);
 
