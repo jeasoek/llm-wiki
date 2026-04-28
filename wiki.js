@@ -1040,8 +1040,8 @@ function isSapQuery(question) {
 }
 
 async function extractSapParams(question) {
-  // 1단계: 정규식으로 직접 추출 (Gemini 불필요, 속도 빠름)
-  const params = {};
+  // 모든 파라미터를 빈값으로 초기화
+  const params = { GPID:'', BUPAK:'', BUKRS:'', GSBER:'', CUNIT:'', GJAHR:'', MONAT:'', TOCDE:'', TTEXT:'' };
   const q = question.toUpperCase();
 
   // 연도 (4자리 숫자)
