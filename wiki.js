@@ -1030,7 +1030,53 @@ async function findRelevantPages(question, topK = 4) {
    ────────────────────────────── */
 const chatHistory = [];
 
-async function callGeminiChat(question, relevantPages, history = chatHistory) {
+/* ──────────────────────────────
+   SAP OData 연동
+   ────────────────────────────── */
+function isSapQuery(question) {
+  return /BUPAK|BUKRS|GSBER|CUNIT|GJAHR|MONAT|TOCDE|GPID|\bPID\b|사업장|회사코드|사업부|통화단위|회계연도|회계.*월|프로젝트.*조회|SAP.*조회|조회.*SAP/i.test(question);
+}
+
+async function extractSapParams(question) {
+  const key = localStorage.getItem('gemini_key') || '';
+  if (!key) return {};
+  try {
+    const prompt = `다음 질문에서 SAP PID 조회 파라미터를 추출하세요.
+파라미터 설명: GPID(그룹PID), BUPAK(사업장), BUKRS(회사코드), GSBER(사업부), CUNIT(통화), GJAHR(회계연도 4자리), MONAT(월 2자리), TOCDE(거래코드), TTEXT(텍스트검색)
+값이 없거나 불명확하면 빈 문자열로 두세요.
+반드시 아래 JSON만 응답 (코드블록 없이):
+{"GPID":"","BUPAK":"","BUKRS":"","GSBER":"","CUNIT":"","GJAHR":"","MONAT":"","TOCDE":"","TTEXT":""}
+
+질문: ${question}`;
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${key}`,
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0,maxOutputTokens:256} }) }
+    );
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const m = text.match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : {};
+  } catch { return {}; }
+}
+
+async function fetchSapData(params) {
+  const sapUrl    = localStorage.getItem('sap_url')    || '';
+  const sapClient = localStorage.getItem('sap_client') || '100';
+  const sapUser   = localStorage.getItem('sap_user')   || '';
+  const sapPass   = localStorage.getItem('sap_pass')   || '';
+  if (!sapUrl || !sapUser || !sapPass) throw new Error('SAP 설정이 없습니다. ⚙️ 설정에서 SAP 정보를 입력해 주세요.');
+  const res = await fetch('/api/sap', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sapUrl, sapClient, sapUser, sapPass, params }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `SAP 조회 실패 (${res.status})`);
+  return data;
+}
+
+async function callGeminiChat(question, relevantPages, history = chatHistory, sapData = null) {
   const key = localStorage.getItem('gemini_key') || '';
   if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다.');
 
@@ -1044,12 +1090,22 @@ async function callGeminiChat(question, relevantPages, history = chatHistory) {
     .map(m => `${m.role === 'user' ? '사용자' : 'AI'}: ${m.text}`)
     .join('\n');
 
+  const sapSection = sapData?.d?.results?.length > 0
+    ? `\n\n【SAP 실시간 조회 결과 (${sapData.d.results.length}건)】\n` +
+      sapData.d.results.slice(0, 30).map((r, i) =>
+        `[${i+1}] PID:${r.PID||'-'} GPID:${r.GPID||'-'} BUPAK:${r.BUPAK||'-'} BUKRS:${r.BUKRS||'-'} ` +
+        `GJAHR:${r.GJAHR||'-'} MONAT:${r.MONAT||'-'} TTEXT:${r.TTEXT||'-'} TCODE:${r.TCODE||'-'} ` +
+        `PCSUB:${r.PCSUB||'-'} PCSUB_TEXT:${r.PCSUB_TEXT||'-'}`
+      ).join('\n')
+    : sapData !== null ? '\n\n【SAP 조회 결과: 데이터 없음】' : '';
+
   const prompt = `당신은 LLM Wiki AI 어시스턴트입니다.
 아래 위키 페이지를 우선 참고하고, 위키에 없는 내용은 Gemini 일반 지식으로 보완하세요.
-HTML로 답변하세요 (<p>,<ul><li>,<strong>,<h3> 사용).
+SAP 조회 결과가 있으면 그 데이터를 중심으로 표(<table>) 또는 목록으로 정리해 답변하세요.
+HTML로 답변하세요 (<p>,<ul><li>,<strong>,<h3>,<table> 사용).
 
 【관련 위키 페이지】
-${context}
+${context}${sapSection}
 
 【대화 히스토리】
 ${historyText || '(첫 질문)'}
@@ -1212,8 +1268,19 @@ function initChatPanel() {
         }
       }
 
+      let sapData = null;
+      if (isSapQuery(q) && localStorage.getItem('sap_url')) {
+        try {
+          setStatus('SAP 데이터 조회 중...');
+          const sapParams = await extractSapParams(q);
+          sapData = await fetchSapData(sapParams);
+        } catch(sapErr) {
+          setStatus(`SAP 조회 실패: ${sapErr.message}`);
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
       setStatus(`Gemini 답변 생성 중... (참조 ${relevant.length}개 페이지)`);
-      const result = await callGeminiChat(q, relevant);
+      const result = await callGeminiChat(q, relevant, chatHistory, sapData);
 
       chatHistory.push({ role: 'user', text: q });
       chatHistory.push({ role: 'ai', text: result.answer.replace(/<[^>]+>/g, ' ') });
@@ -1505,15 +1572,23 @@ function initAdminUI() {
     document.getElementById('ghToken').value   = localStorage.getItem('gh_token')   || '';
     document.getElementById('ghOwner').value   = localStorage.getItem('gh_owner')   || 'jeasoek';
     document.getElementById('ghRepo').value    = localStorage.getItem('gh_repo')    || 'llm-wiki';
+    document.getElementById('sapUrl').value    = localStorage.getItem('sap_url')    || '';
+    document.getElementById('sapClient').value = localStorage.getItem('sap_client') || '100';
+    document.getElementById('sapUser').value   = localStorage.getItem('sap_user')   || '';
+    document.getElementById('sapPass').value   = localStorage.getItem('sap_pass')   || '';
     settingsModal.classList.remove('hidden');
   });
   document.getElementById('closeSettings').addEventListener('click', () => settingsModal.classList.add('hidden'));
   settingsModal.addEventListener('click', e => { if (e.target === settingsModal) settingsModal.classList.add('hidden'); });
   document.getElementById('saveSettings').addEventListener('click', () => {
-    localStorage.setItem('gemini_key', document.getElementById('geminiKey').value.trim());
-    localStorage.setItem('gh_token',   document.getElementById('ghToken').value.trim());
-    localStorage.setItem('gh_owner',   document.getElementById('ghOwner').value.trim() || 'jeasoek');
-    localStorage.setItem('gh_repo',    document.getElementById('ghRepo').value.trim()  || 'llm-wiki');
+    localStorage.setItem('gemini_key',  document.getElementById('geminiKey').value.trim());
+    localStorage.setItem('gh_token',    document.getElementById('ghToken').value.trim());
+    localStorage.setItem('gh_owner',    document.getElementById('ghOwner').value.trim() || 'jeasoek');
+    localStorage.setItem('gh_repo',     document.getElementById('ghRepo').value.trim()  || 'llm-wiki');
+    localStorage.setItem('sap_url',     document.getElementById('sapUrl').value.trim());
+    localStorage.setItem('sap_client',  document.getElementById('sapClient').value.trim() || '100');
+    localStorage.setItem('sap_user',    document.getElementById('sapUser').value.trim());
+    localStorage.setItem('sap_pass',    document.getElementById('sapPass').value.trim());
     settingsModal.classList.add('hidden');
   });
 
@@ -1710,8 +1785,19 @@ function initFloatChatbot() {
           relevant = await findRelevantPages(q);
         }
       }
+      let sapData = null;
+      if (isSapQuery(q) && localStorage.getItem('sap_url')) {
+        try {
+          status.textContent = 'SAP 데이터 조회 중...';
+          const sapParams = await extractSapParams(q);
+          sapData = await fetchSapData(sapParams);
+        } catch(sapErr) {
+          status.textContent = `SAP 조회 실패: ${sapErr.message}`;
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
       status.textContent = 'Gemini 답변 생성 중...';
-      const result = await callGeminiChat(q, relevant, floatHistory);
+      const result = await callGeminiChat(q, relevant, floatHistory, sapData);
       floatHistory.push({ role: 'user', text: q });
       floatHistory.push({ role: 'ai',   text: result.answer.replace(/<[^>]+>/g, ' ') });
       typing.remove();

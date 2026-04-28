@@ -175,6 +175,20 @@
       <label class="admin-label">저장소 이름 (Repo)
         <input type="text" id="ghRepo" class="admin-input" placeholder="llm-wiki">
       </label>
+      <hr style="margin:14px 0;border:none;border-top:1px solid #e5e7eb">
+      <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:8px">SAP 연동 설정</div>
+      <label class="admin-label">SAP 서버 URL
+        <input type="text" id="sapUrl" class="admin-input" placeholder="https://s4hana.example.com:44300">
+      </label>
+      <label class="admin-label">SAP Client
+        <input type="text" id="sapClient" class="admin-input" placeholder="100">
+      </label>
+      <label class="admin-label">SAP 사용자 ID
+        <input type="text" id="sapUser" class="admin-input" placeholder="wise02">
+      </label>
+      <label class="admin-label">SAP 비밀번호
+        <input type="password" id="sapPass" class="admin-input" placeholder="">
+      </label>
     </div>
     <div class="admin-footer">
       <button id="saveSettings" class="admin-btn-primary">저장</button>
