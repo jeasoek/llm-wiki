@@ -1,3 +1,31 @@
+import https from 'node:https';
+import http  from 'node:http';
+import { URL } from 'node:url';
+
+function request(urlStr, headers) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr);
+    const mod = u.protocol === 'https:' ? https : http;
+    const options = {
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + u.search,
+      method: 'GET',
+      headers,
+      rejectUnauthorized: false, // 사내 SAP 자체 서명 인증서 허용
+      timeout: 15000,
+    };
+    const req = mod.request(options, res => {
+      let body = '';
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('SAP 연결 시간 초과 (15초)')); });
+    req.end();
+  });
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -19,7 +47,6 @@ export default async function handler(req, res) {
   }
 
   const PARAM_KEYS = ['GPID','BUPAK','BUKRS','GSBER','CUNIT','GJAHR','MONAT','TOCDE','TTEXT'];
-  // EntitySet 방식: $filter로 파라미터 전달 (PID_SEARCHSET_GET_ENTITYSET은 ABAP 메서드명, URL은 PID_SEARCHSET)
   const filters = PARAM_KEYS
     .filter(k => params[k])
     .map(k => `${k} eq '${String(params[k]).replace(/'/g, "''")}'`);
@@ -28,24 +55,21 @@ export default async function handler(req, res) {
   const url = `${baseUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSET?$format=json&sap-client=${client}${filterStr}`;
 
   const credentials = Buffer.from(`${user}:${pass}`).toString('base64');
+  const headers = {
+    'Authorization': `Basic ${credentials}`,
+    'Accept': 'application/json',
+  };
 
   try {
-    const sapRes = await fetch(url, {
-      headers: {
-        'Authorization': `Basic ${credentials}`,
-        'Accept': 'application/json',
-      },
-    });
+    const { status, body } = await request(url, headers);
 
-    const body = await sapRes.text();
-
-    if (!sapRes.ok) {
-      res.status(sapRes.status).json({ error: `SAP 오류 ${sapRes.status}`, detail: body.slice(0, 500), url });
+    if (status < 200 || status >= 300) {
+      res.status(status).json({ error: `SAP 오류 ${status}`, detail: body.slice(0, 500), url });
       return;
     }
 
     res.status(200).json(JSON.parse(body));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message, url });
   }
 }
