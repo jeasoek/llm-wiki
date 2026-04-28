@@ -1071,6 +1071,9 @@ async function extractSapParams(question) {
   const ttextM = question.match(/TTEXT\s*[:\s]\s*(.+?)(?:\s|$)/i);
   if (ttextM) params.TTEXT = ttextM[1];
 
+  // TTEXT 미지정 시 와일드카드 * 기본값
+  if (!params.TTEXT) params.TTEXT = '*';
+
   console.log('[SAP] extractSapParams (regex):', params);
 
   // 2단계: Gemini로 보완 (빠른 실패 허용)
@@ -1134,7 +1137,7 @@ async function fetchSapData(params) {
     return proxyData;
   } catch(proxyErr) {
     // 프록시 미실행 시 직접 호출 (CORS 허용된 환경에서만 동작)
-    console.warn('[SAP] 프록시 실패, 직접 호출 시도:', proxyErr.message);
+    console.warn('[SAP] 프록시 실패, 직접 호출 시도:', proxyErr.message || String(proxyErr));
     console.log('[SAP] OData URL:', odataUrl);
     const credentials = btoa(`${sapUser}:${sapPass}`);
     const res = await fetch(odataUrl, {
