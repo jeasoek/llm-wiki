@@ -972,12 +972,12 @@ async function callGeminiEmbed(text) {
   const key = localStorage.getItem('gemini_key') || '';
   if (!key) throw new Error('Gemini API 키가 필요합니다.');
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-exp-03-07:embedContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${key}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'models/gemini-embedding-exp-03-07',
+        model: 'models/text-embedding-004',
         content: { parts: [{ text: text.slice(0, 10000) }] }
       })
     }
@@ -1269,14 +1269,19 @@ function initChatPanel() {
       }
 
       let sapData = null;
-      if (isSapQuery(q) && localStorage.getItem('sap_url')) {
-        try {
-          setStatus('SAP 데이터 조회 중...');
-          const sapParams = await extractSapParams(q);
-          sapData = await fetchSapData(sapParams);
-        } catch(sapErr) {
-          setStatus(`SAP 조회 실패: ${sapErr.message}`);
-          await new Promise(r => setTimeout(r, 1500));
+      if (isSapQuery(q)) {
+        if (!localStorage.getItem('sap_url')) {
+          setStatus('⚙️ SAP 연동: 설정에서 SAP URL/ID/PW를 먼저 입력해 주세요.');
+          await new Promise(r => setTimeout(r, 2000));
+        } else {
+          try {
+            setStatus('SAP 데이터 조회 중...');
+            const sapParams = await extractSapParams(q);
+            sapData = await fetchSapData(sapParams);
+          } catch(sapErr) {
+            setStatus(`SAP 조회 실패: ${sapErr.message}`);
+            await new Promise(r => setTimeout(r, 1500));
+          }
         }
       }
       setStatus(`Gemini 답변 생성 중... (참조 ${relevant.length}개 페이지)`);
@@ -1786,14 +1791,19 @@ function initFloatChatbot() {
         }
       }
       let sapData = null;
-      if (isSapQuery(q) && localStorage.getItem('sap_url')) {
-        try {
-          status.textContent = 'SAP 데이터 조회 중...';
-          const sapParams = await extractSapParams(q);
-          sapData = await fetchSapData(sapParams);
-        } catch(sapErr) {
-          status.textContent = `SAP 조회 실패: ${sapErr.message}`;
-          await new Promise(r => setTimeout(r, 1500));
+      if (isSapQuery(q)) {
+        if (!localStorage.getItem('sap_url')) {
+          status.textContent = '⚙️ SAP 연동: 설정에서 SAP URL/ID/PW를 먼저 입력해 주세요.';
+          await new Promise(r => setTimeout(r, 2000));
+        } else {
+          try {
+            status.textContent = 'SAP 데이터 조회 중...';
+            const sapParams = await extractSapParams(q);
+            sapData = await fetchSapData(sapParams);
+          } catch(sapErr) {
+            status.textContent = `SAP 조회 실패: ${sapErr.message}`;
+            await new Promise(r => setTimeout(r, 1500));
+          }
         }
       }
       status.textContent = 'Gemini 답변 생성 중...';
