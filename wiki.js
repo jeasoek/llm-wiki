@@ -1040,29 +1040,69 @@ function isSapQuery(question) {
 }
 
 async function extractSapParams(question) {
-  const key = localStorage.getItem('gemini_key') || '';
-  if (!key) return {};
-  try {
-    const prompt = `다음 질문에서 SAP PID 조회 파라미터를 추출하세요.
-파라미터 설명: GPID(그룹PID), BUPAK(사업장), BUKRS(회사코드), GSBER(사업부), CUNIT(통화), GJAHR(회계연도 4자리), MONAT(월 2자리), TOCDE(거래코드), TTEXT(텍스트검색)
-값이 없거나 불명확하면 빈 문자열로 두세요.
-반드시 아래 JSON만 응답 (코드블록 없이):
-{"GPID":"","BUPAK":"","BUKRS":"","GSBER":"","CUNIT":"","GJAHR":"","MONAT":"","TOCDE":"","TTEXT":""}
+  // 1단계: 정규식으로 직접 추출 (Gemini 불필요, 속도 빠름)
+  const params = {};
+  const q = question.toUpperCase();
 
+  // 연도 (4자리 숫자)
+  const yearM = question.match(/20\d{2}/);
+  if (yearM) params.GJAHR = yearM[0];
+
+  // 월 (1~12월 또는 01~12)
+  const monM = question.match(/(\d{1,2})\s*월/);
+  if (monM) params.MONAT = String(monM[1]).padStart(2, '0');
+
+  // BUKRS (회사코드: 영문+숫자 2~4자, KR01 / 1000 패턴)
+  const bukrsM = question.match(/BUKRS\s*[:\s]\s*([A-Z0-9]{2,4})|회사\s*코드\s*[:\s]\s*([A-Z0-9]{2,4})/i)
+    || question.match(/\b([A-Z]{2}\d{2}|\d{4})\b/);
+  if (bukrsM) params.BUKRS = (bukrsM[1] || bukrsM[2] || '').toUpperCase();
+
+  // BUPAK (사업장: 영문 2~4자)
+  const bupakM = question.match(/BUPAK\s*[:\s]\s*([A-Z]{2,4})|사업장\s*[:\s]\s*([A-Z]{2,4})/i);
+  if (bupakM) params.BUPAK = (bupakM[1] || bupakM[2] || '').toUpperCase();
+
+  // GSBER (사업부)
+  const gsberM = question.match(/GSBER\s*[:\s]\s*([A-Z0-9]{2,4})|사업부\s*[:\s]\s*([A-Z0-9]{2,4})/i);
+  if (gsberM) params.GSBER = (gsberM[1] || gsberM[2] || '').toUpperCase();
+
+  // GPID / TTEXT
+  const gpidM = question.match(/GPID\s*[:\s]\s*(\S+)/i);
+  if (gpidM) params.GPID = gpidM[1];
+  const ttextM = question.match(/TTEXT\s*[:\s]\s*(.+?)(?:\s|$)/i);
+  if (ttextM) params.TTEXT = ttextM[1];
+
+  console.log('[SAP] extractSapParams (regex):', params);
+
+  // 2단계: Gemini로 보완 (빠른 실패 허용)
+  const key = localStorage.getItem('gemini_key') || '';
+  if (key) {
+    try {
+      const prompt = `다음 질문에서 SAP PID 조회 파라미터를 추출하세요.
+파라미터: GPID(그룹PID), BUPAK(사업장 영문코드), BUKRS(회사코드), GSBER(사업부), CUNIT(통화), GJAHR(회계연도4자리), MONAT(월2자리), TOCDE(거래코드), TTEXT(텍스트)
+값 없으면 빈 문자열. 반드시 JSON만 응답:
+{"GPID":"","BUPAK":"","BUKRS":"","GSBER":"","CUNIT":"","GJAHR":"","MONAT":"","TOCDE":"","TTEXT":""}
 질문: ${question}`;
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${key}`,
-      { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0,maxOutputTokens:256} }) }
-    );
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const m = text.match(/\{[\s\S]*\}/);
-    return m ? JSON.parse(m[0]) : {};
-  } catch(e) {
-    console.warn('[SAP] extractSapParams 실패:', e.message);
-    return {};
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${key}`,
+        { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0,maxOutputTokens:256} }) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const m = text.match(/\{[\s\S]*?\}/);
+        if (m) {
+          const gParams = JSON.parse(m[0]);
+          // Gemini 결과로 정규식 결과를 보완 (비어있는 항목만 채움)
+          Object.keys(gParams).forEach(k => { if (gParams[k] && !params[k]) params[k] = gParams[k]; });
+          console.log('[SAP] extractSapParams (gemini 보완 후):', params);
+        }
+      }
+    } catch(e) {
+      console.warn('[SAP] Gemini 파라미터 추출 실패 (정규식 결과 사용):', e.message);
+    }
   }
+  return params;
 }
 
 async function fetchSapData(params) {
