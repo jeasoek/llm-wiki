@@ -1072,13 +1072,27 @@ async function fetchSapData(params) {
   const sapPass   = localStorage.getItem('sap_pass')   || '';
   console.log('[SAP] fetchSapData | url:', sapUrl, '| user:', sapUser, '| params:', params);
   if (!sapUrl || !sapUser || !sapPass) throw new Error('SAP 설정이 없습니다. ⚙️ 설정에서 SAP 정보를 입력해 주세요.');
-  const res = await fetch('/api/sap', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sapUrl, sapClient, sapUser, sapPass, params }),
+
+  const PARAM_KEYS = ['GPID','BUPAK','BUKRS','GSBER','CUNIT','GJAHR','MONAT','TOCDE','TTEXT'];
+  const filters = PARAM_KEYS
+    .filter(k => params[k])
+    .map(k => `${k} eq '${String(params[k]).replace(/'/g, "''")}'`);
+  const filterStr = filters.length ? `&$filter=${encodeURIComponent(filters.join(' and '))}` : '';
+  const odataUrl = `${sapUrl}/sap/opu/odata/sap/ZGWPAC_MAIN_SRV/PID_SEARCHSET?$format=json&sap-client=${sapClient}${filterStr}`;
+
+  console.log('[SAP] OData URL:', odataUrl);
+
+  // 브라우저에서 SAP 사내망 직접 호출 (Basic Auth)
+  const credentials = btoa(`${sapUser}:${sapPass}`);
+  const res = await fetch(odataUrl, {
+    headers: {
+      'Authorization': `Basic ${credentials}`,
+      'Accept': 'application/json',
+    },
   });
+
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `SAP 조회 실패 (${res.status})`);
+  if (!res.ok) throw new Error(data?.error?.message || `SAP 오류 (${res.status})`);
   return data;
 }
 
