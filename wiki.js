@@ -1034,7 +1034,9 @@ const chatHistory = [];
    SAP OData 연동
    ────────────────────────────── */
 function isSapQuery(question) {
-  return /BUPAK|BUKRS|GSBER|CUNIT|GJAHR|MONAT|TOCDE|GPID|\bPID\b|사업장|회사코드|사업부|통화단위|회계연도|회계.*월|프로젝트.*조회|SAP.*조회|조회.*SAP/i.test(question);
+  const result = /SAP:|BUPAK|BUKRS|GSBER|CUNIT|GJAHR|MONAT|TOCDE|GPID|\bPID\b|사업장|회사코드|사업부|통화단위|회계연도|회계.*월|프로젝트.*조회|SAP.*조회|조회.*SAP|PID.*조회|조회.*PID|재고.*문서|물리.*재고|실사|ZPAC|ZGWPAC/i.test(question);
+  console.log('[SAP] isSapQuery:', result, '| question:', question);
+  return result;
 }
 
 async function extractSapParams(question) {
@@ -1065,6 +1067,7 @@ async function fetchSapData(params) {
   const sapClient = localStorage.getItem('sap_client') || '100';
   const sapUser   = localStorage.getItem('sap_user')   || '';
   const sapPass   = localStorage.getItem('sap_pass')   || '';
+  console.log('[SAP] fetchSapData | url:', sapUrl, '| user:', sapUser, '| params:', params);
   if (!sapUrl || !sapUser || !sapPass) throw new Error('SAP 설정이 없습니다. ⚙️ 설정에서 SAP 정보를 입력해 주세요.');
   const res = await fetch('/api/sap', {
     method: 'POST',
